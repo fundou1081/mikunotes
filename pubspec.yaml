@@ -1,0 +1,63 @@
+name: mikunotes
+description: MikuNotes - B站视频学习机，把视频变成你的私人知识库
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # 状态管理
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+  
+  # 数据库
+  drift: ^2.22.1
+  sqlite3_flutter_libs: ^0.5.26
+  
+  # 网络
+  dio: ^5.7.0
+  
+  # 路由
+  go_router: ^14.6.2
+  
+  # 安全存储
+  flutter_secure_storage: ^9.2.3
+  
+  # UI
+  flutter_markdown: ^0.7.4
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.4.1
+  flutter_slidable: ^3.1.1
+  
+  # 工具
+  path_provider: ^2.1.4
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.4
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  json_annotation: ^4.9.0
+  freezed_annotation: ^2.4.4
+  
+  # WebView (B站登录)
+  webview_flutter: ^4.10.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  
+  # 代码生成
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.3
+  drift_dev: ^2.22.1
+  json_serializable: ^6.9.0
+  freezed: ^2.5.7
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
