@@ -1,5 +1,3 @@
-part of 'models.dart';
-
 class Video {
   final String id;
   final String bvid;

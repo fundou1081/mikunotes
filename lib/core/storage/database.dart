@@ -118,7 +118,7 @@ class AppDatabase extends _$AppDatabase {
 
   // ─── 对话操作 ──────────────────────────────────────────────
 
-  Future<List<ChatMessageData>> getChatHistory(String bvid) =>
+  Future<List<ChatMessage>> getChatHistory(String bvid) =>
       (select(chatMessages)
             ..where((m) => m.bvid.equals(bvid))
             ..orderBy([(m) => OrderingTerm.asc(m.timestamp)]))

@@ -1,15 +1,13 @@
-part of 'models.dart';
-
 enum ChatRole { user, assistant, system }
 
-class ChatMessage {
+class ChatMessageModel {
   final String id;
   final String videoId;
   final ChatRole role;
   final String content;
   final DateTime timestamp;
 
-  const ChatMessage({
+  const ChatMessageModel({
     required this.id,
     required this.videoId,
     required this.role,

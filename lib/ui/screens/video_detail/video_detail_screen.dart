@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:mikunotes/core/models/chat_message.dart';
 import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/models/summary.dart';
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/storage/database.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -143,14 +145,14 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 
       // 保存到数据库
       final db = ref.read(databaseProvider);
-      await db.saveSummary(SummariesCompanion.insert(
-        id: _uuid.v4(),
-        bvid: widget.bvid,
+      await db.saveSummary(SummariesCompanion(
+        id: Value(_uuid.v4()),
+        bvid: Value(widget.bvid),
         type: const Value('structured'),
-        content: summary,
+        content: Value(summary),
         modelUsed: Value(config.effectiveModel),
         promptUsed: Value(systemPrompt),
-        createdAt: DateTime.now(),
+        createdAt: Value(DateTime.now()),
       ));
 
       setState(() {
@@ -294,7 +296,7 @@ class _ChatTab extends ConsumerStatefulWidget {
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  List<ChatMessage> _messages = [];
+  List<ChatMessageModel> _messages = [];
   bool _sending = false;
 
   @override
@@ -321,7 +323,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     }
 
     final db = ref.read(databaseProvider);
-    final userMsg = ChatMessage(
+    final userMsg = ChatMessageModel(
       id: _uuid.v4(),
       videoId: widget.bvid,
       role: ChatRole.user,
@@ -334,12 +336,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       _sending = true;
     });
     _controller.clear();
-    await db.saveChatMessage(ChatMessagesCompanion.insert(
-      id: userMsg.id,
-      bvid: userMsg.videoId,
-      role: userMsg.role.name,
-      content: userMsg.content,
-      timestamp: userMsg.timestamp,
+    await db.saveChatMessage(ChatMessagesCompanion(
+      id: Value(userMsg.id),
+      bvid: Value(userMsg.videoId),
+      role: Value(userMsg.role.name),
+      content: Value(userMsg.content),
+      timestamp: Value(userMsg.timestamp),
     ));
 
     try {
@@ -361,7 +363,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         messages: history,
       );
 
-      final assistantMsg = ChatMessage(
+      final assistantMsg = ChatMessageModel(
         id: _uuid.v4(),
         videoId: widget.bvid,
         role: ChatRole.assistant,
@@ -369,12 +371,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         timestamp: DateTime.now(),
       );
 
-      await db.saveChatMessage(ChatMessagesCompanion.insert(
-        id: assistantMsg.id,
-        bvid: assistantMsg.videoId,
-        role: assistantMsg.role.name,
-        content: assistantMsg.content,
-        timestamp: assistantMsg.timestamp,
+      await db.saveChatMessage(ChatMessagesCompanion(
+        id: Value(assistantMsg.id),
+        bvid: Value(assistantMsg.videoId),
+        role: Value(assistantMsg.role.name),
+        content: Value(assistantMsg.content),
+        timestamp: Value(assistantMsg.timestamp),
       ));
 
       setState(() {
@@ -450,7 +452,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
 }
 
 class _ChatBubble extends StatelessWidget {
-  final ChatMessage message;
+  final ChatMessageModel message;
   const _ChatBubble({required this.message});
 
   @override

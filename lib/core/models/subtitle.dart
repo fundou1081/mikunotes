@@ -1,5 +1,3 @@
-part of 'models.dart';
-
 class SubtitleEntry {
   final int index;
   final double from;

@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
+import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
-import 'package:mikunotes/core/storage/database.dart';
+import 'package:mikunotes/core/models/video.dart' as model;
+import 'package:mikunotes/core/storage/database.dart' hide Video;
+import 'package:mikunotes/core/providers/video_repository.dart';
 
 const _secureStorage = FlutterSecureStorage();
 
@@ -78,8 +81,6 @@ final aiConfigProvider = StateNotifierProvider<AIConfigNotifier, AIConfig>(
 
 // ─── LLM 客户端 ─────────────────────────────────────────────────
 
-import 'package:mikunotes/core/llm/llm_client.dart';
-
 final llmClientProvider = Provider<LLMClient>((ref) {
   final config = ref.watch(aiConfigProvider);
   return LLMClient(config: config);
@@ -117,13 +118,12 @@ final bilibiliClientProvider =
 
 // ─── 视频列表 ───────────────────────────────────────────────────
 
-import 'package:mikunotes/core/models/video.dart';
-
-final videoListProvider = StateNotifierProvider<VideoListNotifier, AsyncValue<List<Video>>>(
+final videoListProvider =
+    StateNotifierProvider<VideoListNotifier, AsyncValue<List<model.Video>>>(
   (ref) => VideoListNotifier(ref),
 );
 
-class VideoListNotifier extends StateNotifier<AsyncValue<List<Video>>> {
+class VideoListNotifier extends StateNotifier<AsyncValue<List<model.Video>>> {
   VideoListNotifier(this._ref) : super(const AsyncValue.loading()) {
     load();
   }
@@ -154,5 +154,11 @@ class VideoListNotifier extends StateNotifier<AsyncValue<List<Video>>> {
   }
 }
 
-// Re-export
-export 'video_repository.dart' show videoRepositoryProvider;
+// ─── 视频仓库 provider ─────────────────────────────────────────
+
+final videoRepositoryProvider = Provider<VideoRepository>((ref) {
+  return VideoRepository(
+    ref.watch(bilibiliClientProvider),
+    ref.watch(databaseProvider),
+  );
+});

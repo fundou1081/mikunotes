@@ -1,6 +1,3 @@
-part of 'models.dart';
-
-/// 内置 LLM Provider 预设
 enum LLMProvider {
   deepseek('DeepSeek', 'https://api.deepseek.com', 'deepseek-chat'),
   minimax('MiniMax', 'https://api.minimax.chat/v1', 'MiniMax-M2.7'),

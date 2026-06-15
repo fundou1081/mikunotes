@@ -1,10 +1,7 @@
-import 'package:dio/dio.dart';
-import 'package:drift/drift.dart' as drift;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' as drift show Value;
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/models/subtitle.dart';
-import 'package:mikunotes/core/models/video.dart';
-import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/core/subtitle/subtitle_parser.dart';
 
@@ -22,7 +19,7 @@ class VideoRepository {
   }
 
   /// 导入视频: 获取信息 + 下载字幕
-  Future<Video?> addVideo(String urlOrBvid) async {
+  Future<model.Video?> addVideo(String urlOrBvid) async {
     final bvid = parseBvid(urlOrBvid);
     if (bvid == null) {
       throw const FormatException('无法从输入中提取 BVID');
@@ -42,7 +39,7 @@ class VideoRepository {
     final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
 
     // 2. 保存元数据
-    final video = Video(
+    final video = model.Video(
       id: bvid,
       bvid: bvid,
       title: title,
@@ -53,15 +50,15 @@ class VideoRepository {
       addedAt: DateTime.now(),
     );
 
-    await _db.upsertVideo(VideosCompanion.insert(
-      bvid: video.bvid,
-      title: video.title,
+    await _db.upsertVideo(VideosCompanion(
+      bvid: drift.Value(video.bvid),
+      title: drift.Value(video.title),
       coverUrl: drift.Value(video.coverUrl),
       uploader: drift.Value(video.uploader),
-      aid: aid,
+      aid: drift.Value(aid),
       duration: drift.Value(video.duration),
       pageCount: drift.Value(video.pageCount),
-      addedAt: video.addedAt,
+      addedAt: drift.Value(video.addedAt),
     ));
 
     // 3. 下载字幕 (第一P)
@@ -108,13 +105,13 @@ class VideoRepository {
       final entries = SubtitleParser.parseBilibiliJson(jsonString);
       final plainText = SubtitleParser.toPlainText(entries);
 
-      await _db.upsertSubtitle(SubtitlesCompanion.insert(
-        bvid: bvid,
+      await _db.upsertSubtitle(SubtitlesCompanion(
+        bvid: drift.Value(bvid),
         pageNum: drift.Value(pageNum),
         language: drift.Value(lan),
-        rawJson: jsonString,
-        plainText: plainText,
-        downloadedAt: DateTime.now(),
+        rawJson: drift.Value(jsonString),
+        plainText: drift.Value(plainText),
+        downloadedAt: drift.Value(DateTime.now()),
       ));
 
       return VideoSubtitle(
@@ -128,10 +125,10 @@ class VideoRepository {
     }
   }
 
-  Future<List<Video>> getAllVideos() async {
+  Future<List<model.Video>> getAllVideos() async {
     final rows = await _db.getAllVideos();
     return rows
-        .map((r) => Video(
+        .map((r) => model.Video(
               id: r.bvid,
               bvid: r.bvid,
               title: r.title,
@@ -168,9 +165,3 @@ class VideoRepository {
   Future<void> deleteVideo(String bvid) => _db.deleteVideo(bvid);
 }
 
-final videoRepositoryProvider = Provider<VideoRepository>((ref) {
-  return VideoRepository(
-    ref.watch(bilibiliClientProvider),
-    ref.watch(databaseProvider),
-  );
-});
