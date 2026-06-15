@@ -1,23 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mikunotes/core/models/ai_config.dart';
+import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/ui/screens/login/login_screen.dart';
+import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
 
-/// 首页 — 视频列表 + 添加视频入口
+/// 首页 — 视频库 + 导入入口 + 设置
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bili = ref.watch(bilibiliClientProvider);
+    final isLoggedIn = bili.isLoggedIn;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('MikuNotes'),
         actions: [
+          if (!isLoggedIn)
+            TextButton.icon(
+              onPressed: () => _login(context),
+              icon: const Icon(Icons.login, size: 18),
+              label: const Text('登录'),
+            ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => _openSettings(context),
           ),
         ],
       ),
-      body: _VideoList(),
+      body: const _VideoList(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddVideoDialog(context, ref),
         icon: const Icon(Icons.add),
@@ -26,13 +39,26 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  void _login(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
   void _openSettings(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const _SettingsScreen()),
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
   void _showAddVideoDialog(BuildContext context, WidgetRef ref) {
+    if (!ref.read(bilibiliClientProvider).isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录 B站')),
+      );
+      return;
+    }
+
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -41,10 +67,11 @@ class HomeScreen extends ConsumerWidget {
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
-            hintText: '粘贴 B站链接 / BV号 / b23.tv',
+            hintText: '粘贴链接 / BV号 / b23.tv',
             border: OutlineInputBorder(),
           ),
           autofocus: true,
+          maxLines: 2,
         ),
         actions: [
           TextButton(
@@ -52,11 +79,23 @@ class HomeScreen extends ConsumerWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               final url = controller.text.trim();
-              if (url.isNotEmpty) {
-                ref.read(videoListProvider.notifier).addVideo(url);
-                Navigator.pop(ctx);
+              if (url.isEmpty) return;
+              Navigator.pop(ctx);
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.showSnackBar(
+                SnackBar(content: Text('导入中: $url')),
+              );
+              try {
+                await ref.read(videoListProvider.notifier).addVideo(url);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('✓ 导入完成')),
+                );
+              } catch (e) {
+                messenger.showSnackBar(
+                  SnackBar(content: Text('✗ 失败: $e')),
+                );
               }
             },
             child: const Text('导入'),
@@ -68,112 +107,255 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _VideoList extends ConsumerWidget {
+  const _VideoList();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final videos = ref.watch(videoListProvider);
+    final videosState = ref.watch(videoListProvider);
 
-    if (videos.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.video_library_outlined,
-                size: 64, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(
-              '还没有视频',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '点击下方按钮导入 B站视频',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+    return videosState.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('错误: $e')),
+      data: (videos) {
+        if (videos.isEmpty) {
+          return _EmptyState();
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => ref.read(videoListProvider.notifier).load(),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: videos.length,
+            itemBuilder: (context, index) {
+              final v = videos[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VideoDetailScreen(bvid: v.bvid),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (v.coverUrl.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              v.coverUrl,
+                              width: 80,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.video_library, size: 40),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.video_library, size: 40),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${v.uploader} · ${_formatDuration(v.duration)}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context).colorScheme.outline,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            await ref
+                                .read(videoListProvider.notifier)
+                                .deleteVideo(v.bvid);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: videos.length,
-      itemBuilder: (context, index) {
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: const Icon(Icons.play_circle_outline, size: 40),
-            title: Text(videos[index], maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: const Text('等待下载...'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // TODO: 跳转到视频详情页
+                ),
+              );
             },
           ),
         );
       },
     );
   }
+
+  String _formatDuration(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    if (m >= 60) {
+      final h = m ~/ 60;
+      final mm = m % 60;
+      return '$h:$mm:${s.toString().padLeft(2, '0')}';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
 }
 
-/// 设置页面 — AI 配置
-class _SettingsScreen extends ConsumerStatefulWidget {
-  const _SettingsScreen();
+class _EmptyState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.video_library_outlined,
+                size: 80, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 16),
+            Text('还没有视频',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              '粘贴 B站链接即可导入',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 设置页 — AI 配置 + 账号
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
 
   @override
-  ConsumerState<_SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<_SettingsScreen> {
-  final _baseUrlController = TextEditingController();
-  final _apiKeyController = TextEditingController();
-  final _modelController = TextEditingController();
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  late TextEditingController _baseUrlController;
+  late TextEditingController _apiKeyController;
+  late TextEditingController _modelController;
+  late TextEditingController _customPromptController;
+
+  @override
+  void initState() {
+    super.initState();
+    final config = ref.read(aiConfigProvider);
+    _baseUrlController = TextEditingController(text: config.effectiveBaseUrl);
+    _apiKeyController = TextEditingController(text: config.apiKey);
+    _modelController = TextEditingController(text: config.effectiveModel);
+    _customPromptController = TextEditingController(text: config.customSystemPrompt);
+  }
 
   @override
   void dispose() {
     _baseUrlController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
+    _customPromptController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(aiConfigProvider);
+    final isLoggedIn = ref.watch(bilibiliClientProvider).isLoggedIn;
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Provider 选择
+          // ── 账号 ──────────────────────────────────
+          Text('账号', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                isLoggedIn ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isLoggedIn ? Colors.green : Theme.of(context).colorScheme.outline,
+              ),
+              title: Text(isLoggedIn ? '已登录 B站' : '未登录'),
+              trailing: isLoggedIn
+                  ? TextButton(
+                      onPressed: () async {
+                        await ref.read(bilibiliClientProvider.notifier).logout();
+                      },
+                      child: const Text('退出'),
+                    )
+                  : FilledButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        );
+                      },
+                      child: const Text('登录'),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // ── AI Provider ──────────────────────────
           Text('AI 服务商', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          ...LLMProvider.values.map((p) => RadioListTile<LLMProvider>(
-                title: Text(p.label),
-                subtitle: Text(p.defaultBaseUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
-                value: p,
-                groupValue: config.provider,
-                onChanged: (v) {
-                  if (v != null) {
-                    ref.read(aiConfigProvider.notifier).setProvider(v);
-                    _baseUrlController.text = v.defaultBaseUrl;
-                    _modelController.text = v.defaultModel;
-                  }
-                },
-                dense: true,
-              )),
-          const Divider(height: 32),
+          Card(
+            child: Column(
+              children: LLMProvider.values
+                  .map((p) => RadioListTile<LLMProvider>(
+                        title: Text(p.label),
+                        subtitle: Text(
+                          '${p.defaultBaseUrl}\n默认模型: ${p.defaultModel}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        value: p,
+                        groupValue: config.provider,
+                        onChanged: (v) async {
+                          if (v != null) {
+                            await ref.read(aiConfigProvider.notifier).setProvider(v);
+                            _baseUrlController.text = v.defaultBaseUrl;
+                            _modelController.text = v.defaultModel;
+                          }
+                        },
+                        dense: true,
+                      ))
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 24),
 
-          // 自定义配置
+          // ── 自定义 ──────────────────────────────
           Text('自定义配置', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           TextField(
             controller: _baseUrlController,
             decoration: const InputDecoration(
               labelText: 'Base URL',
-              hintText: 'https://api.deepseek.com',
               border: OutlineInputBorder(),
             ),
           ),
@@ -182,7 +364,6 @@ class _SettingsScreenState extends ConsumerState<_SettingsScreen> {
             controller: _apiKeyController,
             decoration: const InputDecoration(
               labelText: 'API Key',
-              hintText: 'sk-...',
               border: OutlineInputBorder(),
             ),
             obscureText: true,
@@ -192,14 +373,14 @@ class _SettingsScreenState extends ConsumerState<_SettingsScreen> {
             controller: _modelController,
             decoration: const InputDecoration(
               labelText: '模型名称',
-              hintText: 'deepseek-chat',
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
+              SizedBox(
+                width: 120,
                 child: Text('Temperature: ${config.temperature.toStringAsFixed(1)}'),
               ),
               Expanded(
@@ -215,38 +396,57 @@ class _SettingsScreenState extends ConsumerState<_SettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () async {
-              final baseUrl = _baseUrlController.text.trim();
-              final apiKey = _apiKeyController.text.trim();
-              final model = _modelController.text.trim();
-              ref.read(aiConfigProvider.notifier).updateConfig(
-                    baseUrl: baseUrl,
-                    apiKey: apiKey,
-                    model: model,
-                  );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('配置已保存')),
-              );
-            },
-            icon: const Icon(Icons.save),
-            label: const Text('保存配置'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _customPromptController,
+            decoration: const InputDecoration(
+              labelText: '自定义 System Prompt (可选)',
+              border: OutlineInputBorder(),
+              helperText: '留空使用默认 prompt',
+            ),
+            maxLines: 4,
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final client = ref.read(llmClientProvider);
-              final ok = await client.testConnection();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(ok ? '✅ 连接成功' : '❌ 连接失败'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await ref.read(aiConfigProvider.notifier).updateConfig(
+                          baseUrl: _baseUrlController.text.trim(),
+                          apiKey: _apiKeyController.text.trim(),
+                          model: _modelController.text.trim(),
+                          customSystemPrompt: _customPromptController.text,
+                        );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✓ 配置已保存')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('保存'),
                 ),
-              );
-            },
-            icon: const Icon(Icons.wifi_find),
-            label: const Text('测试连接'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final client = ref.read(llmClientProvider);
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('测试中...')),
+                    );
+                    final ok = await client.testConnection();
+                    messenger.showSnackBar(
+                      SnackBar(content: Text(ok ? '✓ 连接成功' : '✗ 连接失败')),
+                    );
+                  },
+                  icon: const Icon(Icons.wifi_find),
+                  label: const Text('测试'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
