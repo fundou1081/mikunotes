@@ -163,8 +163,8 @@ class _SummaryTab extends ConsumerStatefulWidget {
 }
 
 class _SummaryTabState extends ConsumerState<_SummaryTab> {
-  String? _viewing; // 正在查看的已保存总结（非 stream）
-  bool _downloading = false; // 字幕下载状态
+  bool _downloading = false;
+  String? _selectedSummaryId; // 历史中选择的总结
 
   Future<void> _generateSummary({String? customPrompt, String? title}) async {
     if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
@@ -173,14 +173,13 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       );
       return;
     }
-    final apiKey = ref.read(aiConfigProvider).apiKey;
-    if (apiKey.isEmpty) {
+    if (ref.read(aiConfigProvider).apiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先配置 AI')),
       );
       return;
     }
-    setState(() => _viewing = null);
+    setState(() => _selectedSummaryId = null);
     await ref.read(generationProvider.notifier).startSummaryGeneration(
       bvid: widget.bvid,
       subtitle: widget.subtitle!,
@@ -196,9 +195,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         bvid: widget.bvid,
         onSelect: (s) {
           Navigator.pop(ctx);
-          setState(() {
-            _viewing = s.content;
-          });
+          setState(() => _selectedSummaryId = s.id);
         },
         onDelete: (s) async {
           await ref.read(videoRepositoryProvider).deleteSummary(s.id);
@@ -277,126 +274,188 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 
   @override
   Widget build(BuildContext context) {
-    final genState = ref.watch(generationProvider)[widget.bvid];
-    final isGenerating = genState?.isRunning ?? false;
-    final content = genState?.content;
-    final error = genState?.error;
-    final isCompleted = genState?.isCompleted ?? false;
-
     if (widget.subtitle == null) return _noSubtitleState();
+    if (_downloading) return const Center(child: CircularProgressIndicator());
 
-    // 查看已保存的总结
-    if (_viewing != null) {
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Markdown(data: _viewing!, selectable: true),
+    final genState = ref.watch(generationProvider)[widget.bvid];
+    return FutureBuilder<List<summary_model.Summary>>(
+      future: ref.read(videoRepositoryProvider).getAllSummaries(widget.bvid),
+      builder: (ctx, snap) {
+        final summaries = snap.data ?? [];
+        final latest = summaries.isNotEmpty ? summaries.first : null;
+
+        // 选中的历史总结
+        if (_selectedSummaryId != null) {
+          final selected = summaries.firstWhere(
+            (s) => s.id == _selectedSummaryId,
+            orElse: () => latest!,
+          );
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(children: [
+                  Text('历史: ${selected.title}', style: Theme.of(context).textTheme.labelMedium),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => setState(() => _selectedSummaryId = null),
+                    icon: const Icon(Icons.arrow_back, size: 16),
+                    label: const Text('最新'),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText(selected.content,
+                      style: Theme.of(context).textTheme.bodyMedium),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // 正在后台生成
+        if (genState != null && genState.isRunning) {
+          return Column(
+            children: [
+              const LinearProgressIndicator(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText(
+                    genState.content.isEmpty ? '(AI 思考中…)' : genState.content,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: FilledButton.tonalIcon(
+                  onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
+                  icon: const Icon(Icons.stop),
+                  label: const Text('停止生成'),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // 生成失败
+        if (genState != null && genState.error != null) {
+          return _buildError(genState.error!, latest);
+        }
+
+        // 有已保存的总结
+        if (latest != null) {
+          return _buildSummaryView(latest, summaries);
+        }
+
+        // 空状态
+        return _buildEmpty();
+      },
+    );
+  }
+
+  Widget _buildError(String error, summary_model.Summary? latest) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Card(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(error),
+            ),
+          ),
           const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () => setState(() => _viewing = null),
-            icon: const Icon(Icons.arrow_back),
-            label: const Text('返回'),
+          FilledButton.icon(
+            onPressed: _generateSummary,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重试'),
           ),
-        ],
-      );
-    }
+        ]),
+      ),
+    );
+  }
 
-    // 正在生成或已生成 — 用简单容器，避免 ListView 渲染问题
-    if (isGenerating || isCompleted || (content?.isNotEmpty ?? false)) {
-      return Column(
-        children: [
-          if (isGenerating)
-            const LinearProgressIndicator(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (error != null)
-                    Card(
-                      color: Theme.of(context).colorScheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(error),
-                      ),
-                    ),
-                  if (isGenerating && (content == null || content.isEmpty))
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Column(children: [
-                          SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-                          SizedBox(height: 16),
-                          Text('AI 思考中…'),
-                        ]),
-                      ),
-                    ),
-                  if (content != null && content.isNotEmpty)
-                    SelectableText(
-                      content,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  if (content == null || content.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('(内容为空，请重试)'),
-                    ),
-                ],
-              ),
+  Widget _buildSummaryView(summary_model.Summary s, List<summary_model.Summary> all) {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SelectableText(
+              s.content,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
-          if (isGenerating)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: FilledButton.tonalIcon(
-                onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
-                icon: const Icon(Icons.stop),
-                label: const Text('停止生成'),
-              ),
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _showExistingSummaries,
+                  icon: const Icon(Icons.history, size: 18),
+                  label: Text('历史 (${all.length})'),
+                ),
+                FilledButton.icon(
+                  onPressed: _generateSummary,
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: const Text('重新生成'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _showTopicExpansionDialog,
+                  icon: const Icon(Icons.open_in_full, size: 18),
+                  label: const Text('展开'),
+                ),
+              ],
             ),
-        ],
-      );
-    }
+          ),
+        ),
+      ],
+    );
+  }
 
-    // 空状态 (错误可能来自上次失败的生成)
-    final genError = genState?.error;
+  Widget _buildEmpty() {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (genError != null)
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(genError),
-              ),
-            ),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _generateSummary,
-                  icon: const Icon(Icons.auto_awesome),
-                  label: const Text('生成 AI 总结'),
+          const Spacer(),
+          Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _generateSummary,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('生成 AI 总结'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _showExistingSummaries,
-                icon: const Icon(Icons.history),
-                tooltip: '历史总结',
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _showExistingSummaries,
+              icon: const Icon(Icons.history),
+              tooltip: '历史总结',
+            ),
+          ]),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _showTopicExpansionDialog,
             icon: const Icon(Icons.open_in_full),
             label: const Text('主题展开'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
           ),
+          const Spacer(),
         ],
       ),
     );
