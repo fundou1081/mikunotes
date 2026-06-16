@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
-import 'package:mikunotes/core/llm/prompt_template.dart';
+import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
 import 'package:mikunotes/core/models/ai_config.dart';
+import 'package:mikunotes/core/models/prompt_template.dart';
 import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:uuid/uuid.dart';
 
@@ -55,6 +57,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
     required String bvid,
     required VideoSubtitle subtitle,
     String? customPrompt,
+    String? templateId,
   }) async {
     // 取消同视频之前的生成
     final prev = state[bvid];
@@ -92,12 +95,26 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         'page_count': '',
       };
 
-      final tpl = (customPrompt ?? config.customSystemPrompt).isNotEmpty
-          ? (customPrompt ?? config.customSystemPrompt)
-          : (config.summaryTemplate.isNotEmpty
-              ? config.summaryTemplate
-              : defaultSummaryTemplate);
-      final systemPrompt = PromptTemplate.render(tpl, templateVars);
+      // 模板选择优先级: customPrompt > 指定 templateId > 激活模板 > AIConfig > 默认
+      String tpl;
+      if ((customPrompt ?? '').isNotEmpty) {
+        tpl = customPrompt!;
+      } else {
+        final tplSet = _ref.read(templatesProvider);
+        PromptTemplate? selected;
+        if (templateId != null) {
+          selected = _ref.read(templatesProvider.notifier).getById(TemplateType.summary, templateId);
+        }
+        selected ??= tplSet.activeSummary;
+        if (selected != null) {
+          tpl = selected.content;
+        } else if (config.summaryTemplate.isNotEmpty) {
+          tpl = config.summaryTemplate;
+        } else {
+          tpl = llm_tpl.defaultSummaryTemplate;
+        }
+      }
+      final systemPrompt = llm_tpl.PromptTemplate.render(tpl, templateVars);
 
       final buffer = StringBuffer();
       await for (final chunk in client.chatStreamWithFallback(

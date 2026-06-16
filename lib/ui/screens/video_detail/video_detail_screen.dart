@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
-import 'package:mikunotes/core/llm/prompt_template.dart';
+import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
+import 'package:mikunotes/core/models/prompt_template.dart';
 import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
+import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:uuid/uuid.dart';
@@ -180,10 +182,78 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       return;
     }
     setState(() => _selectedSummaryId = null);
+    // 如果没有自定义 prompt, 弹出模板选择器
+    String? templateId;
+    if (customPrompt == null) {
+      templateId = await _pickSummaryTemplate();
+      if (templateId == null) return; // 用户取消
+    }
     await ref.read(generationProvider.notifier).startSummaryGeneration(
       bvid: widget.bvid,
       subtitle: widget.subtitle!,
       customPrompt: customPrompt,
+      templateId: templateId,
+    );
+  }
+
+  /// 摘要模板选择器（可取消 → 返回 null）
+  Future<String?> _pickSummaryTemplate() async {
+    final templates = ref.read(templatesProvider);
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(children: [
+                    const Icon(Icons.description),
+                    const SizedBox(width: 8),
+                    const Text('选摘要模板', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ]),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: templates.summaries.length,
+                    itemBuilder: (ctx, i) {
+                      final t = templates.summaries[i];
+                      final isActive = t.id == templates.activeSummaryId;
+                      return ListTile(
+                        leading: isActive
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : const Icon(Icons.circle_outlined),
+                        title: Text(t.name),
+                        subtitle: Text(
+                          t.content.replaceAll('\n', ' ').substring(
+                              0,
+                              t.content.length < 60
+                                  ? t.content.length
+                                  : 60),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: t.isBuiltIn
+                            ? const Chip(label: Text('内置'))
+                            : null,
+                        onTap: () => Navigator.pop(ctx, t.id),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -782,11 +852,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         .map((m) => {'role': m.role, 'content': m.content})
         .toList();
 
-    // 使用模板渲染 system prompt
-    final chatTemplate = config.chatTemplate.isNotEmpty
-        ? config.chatTemplate
-        : defaultChatTemplate;
-    final systemPrompt = PromptTemplate.render(chatTemplate, {
+    // 使用模板渲染 system prompt — 优先使用激活的 chat 模板
+    final templates = ref.read(templatesProvider);
+    final activeChat = templates.activeChat;
+    final chatTemplate = activeChat?.content ??
+        (config.chatTemplate.isNotEmpty ? config.chatTemplate : llm_tpl.defaultChatTemplate);
+    final systemPrompt = llm_tpl.PromptTemplate.render(chatTemplate, {
       'video_title': 'BV ${widget.bvid}',
       'bvid': widget.bvid,
       'subtitle': widget.subtitle!.fullText,

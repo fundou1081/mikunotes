@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
-import 'package:mikunotes/core/llm/prompt_template.dart';
+import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
+import 'package:mikunotes/core/models/prompt_template.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/storage/backup_service.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
@@ -466,7 +468,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
-                children: PromptTemplate.availableVariables.entries
+                children: llm_tpl.PromptTemplate.availableVariables.entries
                     .map((e) => ActionChip(
                           label: Text('{{${e.key}}}',
                               style: const TextStyle(fontSize: 11)),
@@ -477,7 +479,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 controller.text.substring(cursorPos);
                             controller.text = newText;
                             controller.selection = TextSelection.collapsed(
-                              offset: cursorPos + e.key.length + 4,
+                              offset: (cursorPos + e.key.length + 4).clamp(0, newText.length),
                             );
                           },
                           visualDensity: VisualDensity.compact,
@@ -807,66 +809,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // ── Prompt 模板 ──────────────────────────
           Text('Prompt 模板', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          Text('支持 {{video_title}} {{bvid}} {{subtitle}} {{subtitle_truncated}} {{language}} {{uploader}} {{duration}} {{page_count}} 变量',
+          Text('可保存多套模板。点生成前选哪一套。变量：{{video_title}} {{bvid}} {{subtitle}} {{subtitle_truncated}} {{language}} {{uploader}} {{duration}} {{page_count}}',
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 8),
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.summarize),
-                  title: const Text('总结模板'),
-                  subtitle: Text(
-                    config.summaryTemplate.isEmpty
-                        ? '(使用默认)'
-                        : config.summaryTemplate.substring(
-                            0, config.summaryTemplate.length < 80
-                                ? config.summaryTemplate.length
-                                : 80),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => _showTemplateEditor(
-                    context,
-                    title: '总结 Prompt 模板',
-                    initial: config.summaryTemplate,
-                    defaultTemplate: defaultSummaryTemplate,
-                    onSave: (v) async {
-                      await ref
-                          .read(aiConfigProvider.notifier)
-                          .updateConfig(summaryTemplate: v);
-                    },
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.chat_bubble_outline),
-                  title: const Text('对话模板'),
-                  subtitle: Text(
-                    config.chatTemplate.isEmpty
-                        ? '(使用默认)'
-                        : config.chatTemplate.substring(
-                            0, config.chatTemplate.length < 80
-                                ? config.chatTemplate.length
-                                : 80),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => _showTemplateEditor(
-                    context,
-                    title: '对话 Prompt 模板',
-                    initial: config.chatTemplate,
-                    defaultTemplate: defaultChatTemplate,
-                    onSave: (v) async {
-                      await ref
-                          .read(aiConfigProvider.notifier)
-                          .updateConfig(chatTemplate: v);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _TemplatesSection(),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -911,6 +857,200 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Prompt 模板管理区 — Tab 切换摘要/对话
+class _TemplatesSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_TemplatesSection> createState() => _TemplatesSectionState();
+}
+
+class _TemplatesSectionState extends ConsumerState<_TemplatesSection>
+    with SingleTickerProviderStateMixin {
+  late TabController _tab;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          TabBar(
+            controller: _tab,
+            tabs: const [
+              Tab(icon: Icon(Icons.summarize), text: '摘要模板'),
+              Tab(icon: Icon(Icons.chat_bubble_outline), text: '对话模板'),
+            ],
+          ),
+          SizedBox(
+            height: 380,
+            child: TabBarView(
+              controller: _tab,
+              children: [
+                _TemplateList(type: TemplateType.summary),
+                _TemplateList(type: TemplateType.chat),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 模板列表（摘要或对话）
+class _TemplateList extends ConsumerWidget {
+  final TemplateType type;
+  const _TemplateList({required this.type});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final templates = ref.watch(templatesProvider);
+    final list = type == TemplateType.summary ? templates.summaries : templates.chats;
+    final activeId = type == TemplateType.summary ? templates.activeSummaryId : templates.activeChatId;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.separated(
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (ctx, i) {
+              final t = list[i];
+              final isActive = t.id == activeId;
+              return ListTile(
+                dense: true,
+                leading: IconButton(
+                  icon: Icon(
+                    isActive ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: isActive ? Colors.green : null,
+                  ),
+                  tooltip: isActive ? '当前使用中' : '设为默认',
+                  onPressed: () async {
+                    await ref.read(templatesProvider.notifier).setActive(type, t.id);
+                  },
+                ),
+                title: Text(t.name),
+                subtitle: Text(
+                  t.content.replaceAll('\n', ' '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                trailing: t.isBuiltIn
+                    ? const Chip(label: Text('内置'), visualDensity: VisualDensity.compact)
+                    : IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          await ref.read(templatesProvider.notifier).deleteTemplate(type, t.id);
+                        },
+                      ),
+                onTap: () => _editTemplate(ctx, ref, t),
+              );
+            },
+          ),
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: OutlinedButton.icon(
+              onPressed: () => _editTemplate(context, ref, null),
+              icon: const Icon(Icons.add),
+              label: const Text('新建模板'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editTemplate(BuildContext context, WidgetRef ref, PromptTemplate? t) async {
+    final nameCtrl = TextEditingController(text: t?.name ?? '');
+    final contentCtrl = TextEditingController(text: t?.content ?? '');
+    final isNew = t == null;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(isNew ? '新建模板' : '编辑模板 ${t.isBuiltIn ? "(内置)" : ""}'),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '名称',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: contentCtrl,
+                  maxLines: 12,
+                  minLines: 8,
+                  decoration: const InputDecoration(
+                    labelText: '模板内容 (可用变量见下方)',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  children: llm_tpl.PromptTemplate.availableVariables.entries.map((e) {
+                    return ActionChip(
+                      label: Text('{{${e.key}}}'),
+                      onPressed: () {
+                        final pos = contentCtrl.selection.baseOffset;
+                        final text = contentCtrl.text;
+                        final insert = '{{${e.key}}}';
+                        contentCtrl.text = text.substring(0, pos.clamp(0, text.length)) +
+                            insert + text.substring(pos.clamp(0, text.length));
+                        contentCtrl.selection = TextSelection.collapsed(
+                            offset: pos.clamp(0, text.length) + insert.length);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                final content = contentCtrl.text;
+                if (name.isEmpty || content.isEmpty) return;
+                final notifier = ref.read(templatesProvider.notifier);
+                if (isNew) {
+                  await notifier.addTemplate(type, name, content);
+                } else if (!t.isBuiltIn) {
+                  await notifier.updateTemplate(type, t.id, name: name, content: content);
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: Text(isNew ? '添加' : '保存'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
