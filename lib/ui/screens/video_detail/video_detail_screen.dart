@@ -248,7 +248,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✓ 总结已保存')),
         );
-        widget.onChanged();
+        // 不调用 onChanged — 会销毁当前总结内容
       }
     } catch (e) {
       setState(() => _error = '$e');
