@@ -799,10 +799,14 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
 
     try {
       final client = ref.read(llmClientProvider);
+      final config = ref.read(aiConfigProvider);
+      final disableReasoning = config.provider == LLMProvider.minimax ||
+          config.provider == LLMProvider.minimaxFree;
       final buffer = StringBuffer();
       await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: history,
+        disableReasoning: disableReasoning,
       )) {
         buffer.write(chunk);
         setState(() => _streamingContent = buffer.toString());

@@ -72,6 +72,10 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       final config = _ref.read(aiConfigProvider);
       final client = _ref.read(llmClientProvider);
 
+      // MiniMax 系模型默认开推理，需要主动关闭才不返回 reasoning_content
+      final disableReasoning = config.provider == LLMProvider.minimax ||
+          config.provider == LLMProvider.minimaxFree;
+
       final transcript = subtitle.fullText;
       final truncated = transcript.length > config.maxContextChars
           ? transcript.substring(0, config.maxContextChars)
@@ -99,6 +103,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: [{'role': 'user', 'content': '请开始总结'}],
+        disableReasoning: disableReasoning,
       )) {
         buffer.write(chunk);
         state = {

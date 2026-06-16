@@ -413,12 +413,15 @@ class VideoRepository {
         .join('\n');
 
     try {
+      final disableReasoning = config.provider == LLMProvider.minimax ||
+          config.provider == LLMProvider.minimaxFree;
       final summary = await llmClient.chat(
         systemPrompt:
             '你是一个对话历史压缩助手。请将以下对话历史压缩为简洁的要点摘要，保留关键信息：\n1. 用户的问题/需求\n2. 助手给出的重要结论/数据\n3. 任何重要的上下文\n\n用中文输出，控制在 ${config.compressTargetChars ~/ 2} 字以内。',
         userMessage: '以下是需要压缩的对话历史：\n\n$textToCompress',
         maxTokens: 1000,
         temperature: 0.2,
+        disableReasoning: disableReasoning,
       );
 
       // 删除最早的消息

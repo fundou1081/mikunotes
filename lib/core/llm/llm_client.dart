@@ -25,6 +25,7 @@ class LLMClient {
     required String userMessage,
     double? temperature,
     int? maxTokens,
+    bool disableReasoning = false,
   }) async {
     final response = await _dio.post('/chat/completions', data: {
       'model': _config.effectiveModel,
@@ -34,14 +35,16 @@ class LLMClient {
       ],
       'temperature': temperature ?? _config.temperature,
       'max_tokens': maxTokens ?? _config.maxTokens,
+      if (disableReasoning) 'chat_template_kwargs': {'thinking': false},
     });
 
-    return response.data['choices'][0]['message']['content'] as String;
+    return _extractContent(response.data);
   }
 
   Future<String> chatMultiTurn({
     required String systemPrompt,
     required List<Map<String, String>> messages,
+    bool disableReasoning = false,
   }) async {
     final allMessages = [
       {'role': 'system', 'content': systemPrompt},
@@ -53,16 +56,33 @@ class LLMClient {
       'messages': allMessages,
       'temperature': _config.temperature,
       'max_tokens': _config.maxTokens,
+      if (disableReasoning) 'chat_template_kwargs': {'thinking': false},
     });
 
-    return response.data['choices'][0]['message']['content'] as String;
+    return _extractContent(response.data);
+  }
+
+  /// 从响应中提取内容 - 兼容推理模型（content 为空时 fallback 到 reasoning_content）
+  String _extractContent(dynamic data) {
+    final choices = data['choices'] as List?;
+    if (choices == null || choices.isEmpty) return '';
+    final message = choices[0]['message'] as Map?;
+    if (message == null) return '';
+    final content = (message['content'] as String?) ?? '';
+    if (content.isNotEmpty) return content;
+    // 推理模型 fallback: content 为空时用 reasoning_content
+    final reasoning = (message['reasoning_content'] as String?) ?? '';
+    return reasoning;
   }
 
   /// 流式聊天 — 返回内容块的 Stream
   /// 智能检测: 如果响应不是 SSE 格式, 自动 fallback 到普通 chat
+  /// disableReasoning: 如果为 true, 送 chat_template_kwargs.thinking=false
+  ///   同时流式过程跳过 reasoning_content 字段
   Stream<String> chatStream({
     required String systemPrompt,
     required List<Map<String, String>> messages,
+    bool disableReasoning = false,
   }) async* {
     final allMessages = [
       {'role': 'system', 'content': systemPrompt},
@@ -80,6 +100,7 @@ class LLMClient {
         'temperature': _config.temperature,
         'max_tokens': _config.maxTokens,
         'stream': true,
+        if (disableReasoning) 'chat_template_kwargs': {'thinking': false},
       },
       options: Options(
         responseType: ResponseType.stream,
@@ -161,6 +182,7 @@ class LLMClient {
   Stream<String> chatStreamWithFallback({
     required String systemPrompt,
     required List<Map<String, String>> messages,
+    bool disableReasoning = false,
   }) async* {
     final allChunks = <String>[];
     var hasError = false;
@@ -168,6 +190,7 @@ class LLMClient {
       await for (final chunk in chatStream(
         systemPrompt: systemPrompt,
         messages: messages,
+        disableReasoning: disableReasoning,
       )) {
         allChunks.add(chunk);
         yield chunk;
@@ -181,6 +204,7 @@ class LLMClient {
       final full = await chatMultiTurn(
         systemPrompt: systemPrompt,
         messages: messages,
+        disableReasoning: disableReasoning,
       );
       yield full;
     }
