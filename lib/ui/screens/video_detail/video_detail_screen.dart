@@ -56,7 +56,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen> {
         body: TabBarView(children: [
           _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, loading: _loadingSubtitle),
           _ChatTab(bvid: widget.bvid, subtitle: _subtitle),
-          _SubtitleTab(subtitle: _subtitle, loading: _loadingSubtitle),
+          _SubtitleTab(bvid: widget.bvid, subtitle: _subtitle, loading: _loadingSubtitle),
         ]),
       ),
     );
@@ -481,26 +481,103 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-class _SubtitleTab extends StatelessWidget {
+class _SubtitleTab extends ConsumerStatefulWidget {
+  final String bvid;
   final VideoSubtitle? subtitle;
   final bool loading;
-  const _SubtitleTab({required this.subtitle, required this.loading});
+  const _SubtitleTab({required this.bvid, required this.subtitle, required this.loading});
+
+  @override
+  ConsumerState<_SubtitleTab> createState() => _SubtitleTabState();
+}
+
+class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
+  bool _retrying = false;
+  String? _error;
+
+  Future<void> _retry() async {
+    setState(() {
+      _retrying = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(videoRepositoryProvider);
+      final sub = await repo.downloadAndStoreSubtitle(widget.bvid);
+      if (mounted && sub != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✓ 字幕下载成功: ${sub.entries.length} 条')),
+        );
+        // 重新进入该视频详情页，触发父组件 _loadSubtitle
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => VideoDetailScreen(bvid: widget.bvid),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _error = '$e';
+      });
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (widget.loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (subtitle == null || subtitle!.entries.isEmpty) {
-      return const Center(child: Text('暂无字幕'));
+    if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.subtitles_off, size: 64, color: Theme.of(context).colorScheme.outline),
+              const SizedBox(height: 16),
+              const Text('暂无字幕'),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _retrying ? null : _retry,
+                icon: _retrying
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh),
+                label: Text(_retrying ? '下载中...' : '重试下载字幕'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
-
+    final subtitle = widget.subtitle!;
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: subtitle!.entries.length,
+      itemCount: subtitle.entries.length,
       separatorBuilder: (_, __) => const Divider(height: 24),
       itemBuilder: (context, idx) {
-        final e = subtitle!.entries[idx];
+        final e = subtitle.entries[idx];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

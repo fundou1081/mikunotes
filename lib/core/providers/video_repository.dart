@@ -92,6 +92,72 @@ class VideoRepository {
     return video;
   }
 
+  Future<VideoSubtitle?> downloadAndStoreSubtitle(
+    String bvid, {
+    int? pageNum,
+  }) async {
+    final video = await _db.getVideo(bvid);
+    if (video == null) throw Exception('视频未在数据库中');
+
+    final info = await _bili.getVideoInfo(bvid);
+    final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
+    if (pages.isEmpty) throw Exception('视频无分P信息');
+
+    final pageIdx = (pageNum ?? 1) - 1;
+    if (pageIdx < 0 || pageIdx >= pages.length) {
+      throw Exception('分P ${pageNum ?? 1} 超出范围');
+    }
+    final cid = pages[pageIdx]['cid'] as int;
+
+    final subtitleData = await _bili.getSubtitleInfo(
+      aid: video.aid,
+      cid: cid,
+    );
+    final subtitles = subtitleData['subtitles'] as List? ?? [];
+    if (subtitles.isEmpty) {
+      throw Exception('B站返回空字幕列表 (WBI签名可能失败)');
+    }
+
+    // 优先中文字幕
+    Map? target;
+    for (final s in subtitles.cast<Map>()) {
+      final lan = s['lan'] as String? ?? '';
+      final lanDoc = s['lan_doc'] as String? ?? '';
+      if (lan.toLowerCase().contains('zh') || lanDoc.contains('中文')) {
+        target = s;
+        break;
+      }
+    }
+    target ??= subtitles.first as Map;
+
+    final url = (target['subtitle_url'] as String? ?? '').startsWith('//')
+        ? 'https:${target['subtitle_url']}'
+        : target['subtitle_url'] as String;
+    final lan = target['lan_doc'] as String? ?? target['lan'] as String? ?? 'unknown';
+
+    if (url.isEmpty) throw Exception('字幕 URL 为空');
+
+    final content = await _bili.downloadSubtitle(url);
+    final jsonString = content.toString();
+    final entries = SubtitleParser.parseBilibiliJson(jsonString);
+    final plainText = SubtitleParser.toPlainText(entries);
+
+    await _db.upsertSubtitle(SubtitlesCompanion(
+      bvid: drift.Value(bvid),
+      pageNum: drift.Value(pageNum ?? 1),
+      language: drift.Value(lan),
+      rawJson: drift.Value(jsonString),
+      plainText: drift.Value(plainText),
+      downloadedAt: drift.Value(DateTime.now()),
+    ));
+
+    return VideoSubtitle(
+      videoId: bvid,
+      language: lan,
+      entries: entries,
+    );
+  }
+
   Future<VideoSubtitle?> _downloadAndStoreSubtitle(
     String bvid,
     int aid,
