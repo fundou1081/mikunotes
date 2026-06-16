@@ -1,7 +1,6 @@
 enum LLMProvider {
-  deepseek('DeepSeek', 'https://api.deepseek.com', 'deepseek-chat'),
+  deepseek('DeepSeek', 'https://api.deepseek.com', 'deepseek-v4-flash'),
   minimax('MiniMax', 'https://api.minimax.chat/v1', 'MiniMax-M2.7'),
-  minimaxFree('MiniMax Free', 'https://api.minimaxi.com/v1', 'MiniMax-M2.5-Lightning'),
   zhipu('智谱 GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
   custom('自定义', '', '');
 
