@@ -109,6 +109,38 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 - 观点引用视频原话
 - 板块间用 --- 分隔""";
 
+  Future<void> _downloadSubtitle() async {
+    setState(() {
+      _generating = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(videoRepositoryProvider);
+      final sub = await repo.downloadAndStoreSubtitle(widget.bvid);
+      if (!mounted) return;
+      if (sub != null) {
+        setState(() {
+          _generating = false;
+          _error = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✓ 字幕下载成功: ${sub.entries.length} 条')),
+        );
+        // 替换当前页面以刷新
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => VideoDetailScreen(bvid: widget.bvid),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _error = '字幕下载失败: $e';
+        _generating = false;
+      });
+    }
+  }
+
   Future<void> _generateSummary({String? customPrompt}) async {
     if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
       setState(() => _error = '请先下载字幕');
@@ -197,6 +229,24 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               ),
             ),
           const Spacer(),
+          // 字幕缺失时显示下载按钮
+          if (_error == '请先下载字幕')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OutlinedButton.icon(
+                onPressed: _generating ? null : _downloadSubtitle,
+                icon: _generating
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.download),
+                label: Text(_generating ? '下载中...' : '下载字幕'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  minimumSize: const Size(double.infinity, 0),
+                ),
+              ),
+            ),
           if (_generating)
             const Center(child: CircularProgressIndicator())
           else
