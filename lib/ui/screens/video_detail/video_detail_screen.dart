@@ -301,43 +301,49 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       );
     }
 
-    // 正在生成或已生成
+    // 正在生成或已生成 — 用简单容器，避免 ListView 渲染问题
     if (isGenerating || isCompleted || (content?.isNotEmpty ?? false)) {
       return Column(
         children: [
           if (isGenerating)
-            LinearProgressIndicator(
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
-            ),
+            const LinearProgressIndicator(),
           Expanded(
-            child: ListView(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              children: [
-                if (error != null)
-                  Card(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(error),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (error != null)
+                    Card(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(error),
+                      ),
                     ),
-                  ),
-                if (isGenerating && (content == null || content.isEmpty))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-                        const SizedBox(height: 16),
-                        Text('AI 思考中…', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.outline)),
-                      ]),
+                  if (isGenerating && (content == null || content.isEmpty))
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Column(children: [
+                          SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                          SizedBox(height: 16),
+                          Text('AI 思考中…'),
+                        ]),
+                      ),
                     ),
-                  ),
-                if (content != null && content.isNotEmpty)
-                  isCompleted
-                      ? Markdown(data: content, selectable: true)
-                      : SelectableText(content, style: Theme.of(context).textTheme.bodyMedium),
-              ],
+                  if (content != null && content.isNotEmpty)
+                    SelectableText(
+                      content,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  if (content == null || content.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('(内容为空，请重试)'),
+                    ),
+                ],
+              ),
             ),
           ),
           if (isGenerating)
