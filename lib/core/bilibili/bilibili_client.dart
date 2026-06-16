@@ -296,39 +296,34 @@ class BilibiliClient {
     return data['subtitle'] as Map<String, dynamic>;
   }
 
-  /// 下载字幕 JSON 内容 (兼容 B站非标准 JSON)
-  Future<Map<String, dynamic>> downloadSubtitle(String url) async {
+  /// 下载字幕原始内容 (返回原始字符串，不做 JSON 解析)
+  Future<String> downloadSubtitleRaw(String url) async {
     final resp = await _dio.get(
       url,
       options: Options(responseType: ResponseType.plain),
     );
-    final rawBody = resp.data as String;
+    return resp.data as String;
+  }
 
+  /// 解析 B站字幕内容 (兼容非标准 JSON: 未加引号的 key)
+  static Map<String, dynamic> parseSubtitleJson(String rawBody) {
     // 先尝试标准 JSON
     try {
       return Map<String, dynamic>.from(
           jsonDecode(rawBody) as Map<String, dynamic>);
     } catch (_) {
-      // B站有些字幕是类 JS 格式：{key_without_quotes: value}
-      // 帮它补上引号
+      // 类 JS 格式：{key_without_quotes: value}
       try {
-        final fixed = _fixNonStandardJson(rawBody);
+        final fixed = rawBody.replaceAllMapped(
+          RegExp(r'(?<=[{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', multiLine: true),
+          (m) => '"${m.group(1)}":',
+        );
         return Map<String, dynamic>.from(
             jsonDecode(fixed) as Map<String, dynamic>);
       } catch (e) {
-        // 都失败了，把原始内容抛出去让调用方看到
         throw Exception(
-            '字幕 JSON 解析失败。原始内容前 200 字: ${rawBody.substring(0, rawBody.length < 200 ? rawBody.length : 200)}');
+            '字幕 JSON 解析失败。前 200 字: ${rawBody.substring(0, rawBody.length < 200 ? rawBody.length : 200)}');
       }
     }
-  }
-
-  /// 修复非标准 JSON：给未加引号的 key 补引号
-  String _fixNonStandardJson(String raw) {
-    // 处理 {key: value} 和 , key: value
-    return raw.replaceAllMapped(
-      RegExp(r'(?<=[{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', multiLine: true),
-      (m) => '"${m.group(1)}":',
-    );
   }
 }

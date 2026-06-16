@@ -137,16 +137,15 @@ class VideoRepository {
 
     if (url.isEmpty) throw Exception('字幕 URL 为空');
 
-    final content = await _bili.downloadSubtitle(url);
-    final jsonString = content.toString();
-    final entries = SubtitleParser.parseBilibiliJson(jsonString);
+    final rawBody = await _bili.downloadSubtitleRaw(url);
+    final entries = SubtitleParser.parseBilibiliJson(rawBody);
     final plainText = SubtitleParser.toPlainText(entries);
 
     await _db.upsertSubtitle(SubtitlesCompanion(
       bvid: drift.Value(bvid),
       pageNum: drift.Value(pageNum ?? 1),
       language: drift.Value(lan),
-      rawJson: drift.Value(jsonString),
+      rawJson: drift.Value(rawBody),
       plainText: drift.Value(plainText),
       downloadedAt: drift.Value(DateTime.now()),
     ));
@@ -189,16 +188,15 @@ class VideoRepository {
 
       if (url.isEmpty) return null;
 
-      final content = await _bili.downloadSubtitle(url);
-      final jsonString = content.toString();
-      final entries = SubtitleParser.parseBilibiliJson(jsonString);
+      final rawBody = await _bili.downloadSubtitleRaw(url);
+      final entries = SubtitleParser.parseBilibiliJson(rawBody);
       final plainText = SubtitleParser.toPlainText(entries);
 
       await _db.upsertSubtitle(SubtitlesCompanion(
         bvid: drift.Value(bvid),
         pageNum: drift.Value(pageNum),
         language: drift.Value(lan),
-        rawJson: drift.Value(jsonString),
+        rawJson: drift.Value(rawBody),
         plainText: drift.Value(plainText),
         downloadedAt: drift.Value(DateTime.now()),
       ));
