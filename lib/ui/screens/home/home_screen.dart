@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
@@ -13,6 +14,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bili = ref.watch(bilibiliClientProvider);
     final isLoggedIn = bili.isLoggedIn;
+    final user = bili.user;
 
     return Scaffold(
       appBar: AppBar(
@@ -23,7 +25,9 @@ class HomeScreen extends ConsumerWidget {
               onPressed: () => _login(context),
               icon: const Icon(Icons.login, size: 18),
               label: const Text('登录'),
-            ),
+            )
+          else
+            _UserBadge(user: user, onTap: () => _showUserMenu(context, ref)),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => _openSettings(context),
@@ -42,12 +46,6 @@ class HomeScreen extends ConsumerWidget {
   void _login(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
-  }
-
-  void _openSettings(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
@@ -101,6 +99,122 @@ class HomeScreen extends ConsumerWidget {
             child: const Text('导入'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
+  void _showUserMenu(BuildContext context, WidgetRef ref) {
+    final bili = ref.read(bilibiliClientProvider);
+    final user = bili.user;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (user != null) ...[
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: user.face.isNotEmpty ? NetworkImage(user.face) : null,
+                  child: user.face.isEmpty
+                      ? Text(user.uname.isNotEmpty ? user.uname[0] : '?')
+                      : null,
+                ),
+                title: Text(user.uname, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('UID: ${user.mid} · Lv${user.level}'),
+              ),
+              const Divider(height: 1),
+            ],
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('设置'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openSettings(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('退出登录', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await ref.read(bilibiliClientProvider.notifier).logout();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已退出登录')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 用户头像徽章 (AppBar 右侧)
+class _UserBadge extends StatelessWidget {
+  final BiliUser? user;
+  final VoidCallback onTap;
+
+  const _UserBadge({required this.user, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                backgroundImage: (user?.face.isNotEmpty ?? false)
+                    ? NetworkImage(user!.face)
+                    : null,
+                child: (user?.face.isEmpty ?? true)
+                    ? Icon(
+                        Icons.person,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                user?.uname ?? '已登录',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).appBarTheme.foregroundColor ??
+                      Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (user?.isVip ?? false)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.workspace_premium,
+                    size: 14,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
       ),
     );
   }

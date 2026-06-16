@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
@@ -9,8 +10,8 @@ import 'package:mikunotes/core/providers/video_repository.dart';
 
 const _secureStorage = FlutterSecureStorage();
 
-// ─── 加密存储 key ───────────────────────────────────────────────
 const _kSessdata = 'bili_sessdata';
+const _kUserInfo = 'bili_user_info';
 const _kApiKey = 'ai_api_key';
 const _kAiBaseUrl = 'ai_base_url';
 const _kAiModel = 'ai_model';
@@ -35,7 +36,7 @@ class AIConfigNotifier extends StateNotifier<AIConfig> {
     final providerName = await _secureStorage.read(key: _kAiProvider);
     final baseUrl = await _secureStorage.read(key: _kAiBaseUrl);
     final apiKey = await _secureStorage.read(key: _kApiKey);
-    final model = await _secureStorage.read(key: _kAiModel);
+    final modelName = await _secureStorage.read(key: _kAiModel);
 
     state = AIConfig(
       provider: LLMProvider.values.firstWhere(
@@ -44,7 +45,7 @@ class AIConfigNotifier extends StateNotifier<AIConfig> {
       ),
       baseUrl: baseUrl ?? '',
       apiKey: apiKey ?? '',
-      model: model ?? '',
+      model: modelName ?? '',
     );
   }
 
@@ -95,19 +96,69 @@ class BilibiliClientNotifier extends StateNotifier<BilibiliClient> {
 
   Future<void> _load() async {
     final sessdata = await _secureStorage.read(key: _kSessdata);
+    final userJson = await _secureStorage.read(key: _kUserInfo);
+    BiliUser? cachedUser;
+    if (userJson != null) {
+      try {
+        cachedUser = BiliUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      } catch (_) {}
+    }
     if (sessdata != null && sessdata.isNotEmpty) {
-      state = BilibiliClient(sessdata: sessdata);
+      state = BilibiliClient(sessdata: sessdata, user: cachedUser);
+      // 后台验证 SESSDATA 是否还有效
+      _validateSession();
     }
   }
 
-  Future<void> setSessdata(String sessdata) async {
-    state = BilibiliClient(sessdata: sessdata);
-    await _secureStorage.write(key: _kSessdata, value: sessdata);
+  Future<void> _validateSession() async {
+    try {
+      final user = await state.fetchUserInfo();
+      await _saveUser(user);
+    } catch (_) {
+      // SESSDATA 失效，但保留本地缓存的状态显示
+    }
   }
 
+  Future<void> _saveUser(BiliUser user) async {
+    final sessdata = (await _secureStorage.read(key: _kSessdata)) ?? '';
+    state = BilibiliClient(sessdata: sessdata, user: user);
+    await _secureStorage.write(
+      key: _kUserInfo,
+      value: jsonEncode({
+        'mid': user.mid,
+        'uname': user.uname,
+        'face': user.face,
+        'level': user.level,
+        'vipType': user.vipType,
+        'sign': user.sign,
+      }),
+    );
+  }
+
+  /// 扫码登录完成后调用 - 一次性传入 SESSDATA + 用户信息
+  Future<void> completeLogin({required String sessdata, BiliUser? user}) async {
+    state = BilibiliClient(sessdata: sessdata, user: user);
+    await _secureStorage.write(key: _kSessdata, value: sessdata);
+    if (user != null) {
+      await _secureStorage.write(
+        key: _kUserInfo,
+        value: jsonEncode({
+          'mid': user.mid,
+          'uname': user.uname,
+          'face': user.face,
+          'level': user.level,
+          'vipType': user.vipType,
+          'sign': user.sign,
+        }),
+      );
+    }
+  }
+
+  /// 退出登录
   Future<void> logout() async {
     state = BilibiliClient();
     await _secureStorage.delete(key: _kSessdata);
+    await _secureStorage.delete(key: _kUserInfo);
   }
 }
 

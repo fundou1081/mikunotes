@@ -1,14 +1,51 @@
 import 'package:dio/dio.dart';
 
+/// B站登录用户信息
+class BiliUser {
+  final int mid;
+  final String uname;
+  final String face;
+  final int level;
+  final int vipType;
+  final int coins;
+  final String sign;
+
+  const BiliUser({
+    required this.mid,
+    required this.uname,
+    this.face = '',
+    this.level = 0,
+    this.vipType = 0,
+    this.coins = 0,
+    this.sign = '',
+  });
+
+  bool get isVip => vipType > 0;
+
+  factory BiliUser.fromJson(Map<String, dynamic> json) => BiliUser(
+        mid: (json['mid'] as num?)?.toInt() ?? 0,
+        uname: (json['uname'] as String?) ?? '',
+        face: (json['face'] as String?) ?? '',
+        level: (json['level_info'] is Map
+            ? (json['level_info']['current_level'] as num?)?.toInt() ?? 0
+            : 0),
+        vipType: (json['vip'] is Map
+            ? (json['vip']['type'] as num?)?.toInt() ?? 0
+            : (json['vipType'] as num?)?.toInt() ?? 0),
+        coins: (json['money'] as num?)?.toInt() ?? (json['coins'] as num?)?.toInt() ?? 0,
+        sign: (json['sign'] as String?) ?? '',
+      );
+}
+
 /// B站 API 客户端
-/// 
-/// 核心流程: 二维码登录 → 获取视频信息 → 下载字幕
 class BilibiliClient {
   final Dio _dio;
   String? _sessdata;
+  BiliUser? _user;
 
-  BilibiliClient({String? sessdata})
+  BilibiliClient({String? sessdata, BiliUser? user})
       : _sessdata = sessdata,
+        _user = user,
         _dio = Dio(BaseOptions(
           connectTimeout: const Duration(seconds: 15),
           headers: {
@@ -31,7 +68,12 @@ class BilibiliClient {
     _updateCookies();
   }
 
+  void setUser(BiliUser? user) {
+    _user = user;
+  }
+
   bool get isLoggedIn => _sessdata != null && _sessdata!.isNotEmpty;
+  BiliUser? get user => _user;
 
   /// 生成二维码登录 URL 和 qrcode_key
   Future<Map<String, String>> generateQrCode() async {
@@ -46,7 +88,11 @@ class BilibiliClient {
   }
 
   /// 轮询二维码状态
-  /// 返回: { "status": "scanning"|"scanned"|"done", "sessdata"?: "..." }
+  /// 返回:
+  ///   { "status": "scanning"|"scanned"|"done"|"timeout",
+  ///     "sessdata"?: "..." (仅 done 时返回)
+  ///     "user"?: {...}    (登录成功后附带用户信息)
+  ///   }
   Future<Map<String, dynamic>> pollQrCode(String qrcodeKey) async {
     final resp = await _dio.get(
       'https://passport.bilibili.com/x/passport-login/web/qrcode/poll',
@@ -56,10 +102,29 @@ class BilibiliClient {
     final code = data['code'] as int;
 
     if (code == 0) {
-      // 登录成功，从响应 cookie 取 sessdata
-      final cookies = resp.headers['set-cookie'];
-      // 实际 sessdata 在轮询成功后通过另一个接口获取
-      return {'status': 'done'};
+      // 登录成功，从 Set-Cookie 头提取 SESSDATA
+      String? sessdata;
+      final rawCookies = resp.headers['set-cookie'];
+      if (rawCookies != null) {
+        for (final c in rawCookies) {
+          if (c.toLowerCase().startsWith('sessdata=')) {
+            sessdata = c.substring(9).split(';').first;
+            break;
+          }
+        }
+      }
+
+      final result = <String, dynamic>{'status': 'done'};
+      if (sessdata != null && sessdata.isNotEmpty) {
+        result['sessdata'] = sessdata;
+        // 立即设置，下次 fetchVideoInfo 不需要再传
+        setSessdata(sessdata);
+        try {
+          final user = await fetchUserInfo();
+          result['user'] = user;
+        } catch (_) {}
+      }
+      return result;
     } else if (code == 86038) {
       return {'status': 'timeout'};
     } else if (code == 86090) {
@@ -67,6 +132,19 @@ class BilibiliClient {
     } else {
       return {'status': 'scanning'};
     }
+  }
+
+  /// 获取当前登录用户信息 (需要 SESSDATA)
+  Future<BiliUser> fetchUserInfo() async {
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/web-interface/nav',
+    );
+    if (resp.data['code'] != 0) {
+      throw Exception('未登录或 SESSDATA 失效');
+    }
+    final user = BiliUser.fromJson(resp.data['data']);
+    _user = user;
+    return user;
   }
 
   /// 获取视频信息
@@ -83,8 +161,6 @@ class BilibiliClient {
     required int aid,
     required int cid,
   }) async {
-    // WBI 签名在客户端实现比较复杂，这里用简化版
-    // 生产环境需要完整的 WBI 签名算法
     final resp = await _dio.get(
       'https://api.bilibili.com/x/player/wbi/v2',
       queryParameters: {
