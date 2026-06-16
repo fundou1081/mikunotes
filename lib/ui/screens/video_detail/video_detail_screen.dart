@@ -9,6 +9,7 @@ import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
 import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:uuid/uuid.dart';
@@ -162,104 +163,29 @@ class _SummaryTab extends ConsumerStatefulWidget {
 }
 
 class _SummaryTabState extends ConsumerState<_SummaryTab> {
-  String? _summary; // 当前正在 stream 的内容
-  bool _generating = false;
-  String? _error;
-  String? _streamingSummaryId; // 当前 stream 的总结 ID
-
-  String _getVideoTitle() => 'BV ${widget.bvid}';
+  String? _viewing; // 正在查看的已保存总结（非 stream）
+  bool _downloading = false; // 字幕下载状态
 
   Future<void> _generateSummary({String? customPrompt, String? title}) async {
     if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
-      setState(() => _error = '请先下载字幕');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先下载字幕')),
+      );
       return;
     }
     final apiKey = ref.read(aiConfigProvider).apiKey;
     if (apiKey.isEmpty) {
-      setState(() => _error = '请先在设置中配置 AI API Key');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先配置 AI')),
+      );
       return;
     }
-
-    setState(() {
-      _generating = true;
-      _error = null;
-      _summary = '';
-    });
-
-    final summaryId = _uuid.v4();
-    _streamingSummaryId = summaryId;
-
-    final client = ref.read(llmClientProvider);
-    final config = ref.read(aiConfigProvider);
-    final prompt = customPrompt ?? config.customSystemPrompt;
-
-    final transcript = widget.subtitle!.fullText;
-    final maxChars = config.maxContextChars;
-    final truncated = transcript.length > maxChars
-        ? '${transcript.substring(0, maxChars)}'
-        : transcript;
-
-    // 构建模板变量
-    final templateVars = {
-      'video_title': _getVideoTitle(),
-      'bvid': widget.bvid,
-      'subtitle': transcript,
-      'subtitle_truncated': truncated,
-      'language': widget.subtitle!.language,
-      'uploader': '',
-      'duration': '',
-      'page_count': '',
-    };
-
-    // 使用模板或自定义 prompt
-    final tpl = prompt.isNotEmpty
-        ? prompt
-        : (config.summaryTemplate.isNotEmpty
-            ? config.summaryTemplate
-            : _defaultSummaryPrompt);
-    final systemPrompt = PromptTemplate.render(tpl, templateVars);
-
-    final buffer = StringBuffer();
-
-    try {
-      await for (final chunk in client.chatStreamWithFallback(
-        systemPrompt: systemPrompt,
-        messages: [
-          {'role': 'user', 'content': '请开始总结'},
-        ],
-      )) {
-        if (_streamingSummaryId != summaryId) return; // 用户切换了
-        buffer.write(chunk);
-        setState(() => _summary = buffer.toString());
-      }
-
-      // 保存到数据库
-      final repo = ref.read(videoRepositoryProvider);
-      await repo.createSummary(
-        bvid: widget.bvid,
-        content: buffer.toString(),
-        type: summary_model.SummaryType.structured,
-        title: title,
-        modelUsed: config.effectiveModel,
-        promptUsed: systemPrompt,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✓ 总结已保存')),
-        );
-        // 不调用 onChanged — 会销毁当前总结内容
-      }
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _generating = false;
-          _streamingSummaryId = null;
-        });
-      }
-    }
+    setState(() => _viewing = null);
+    await ref.read(generationProvider.notifier).startSummaryGeneration(
+      bvid: widget.bvid,
+      subtitle: widget.subtitle!,
+      customPrompt: customPrompt,
+    );
   }
 
   void _showExistingSummaries() {
@@ -271,8 +197,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         onSelect: (s) {
           Navigator.pop(ctx);
           setState(() {
-            _summary = s.content;
-            _error = null;
+            _viewing = s.content;
           });
         },
         onDelete: (s) async {
@@ -352,102 +277,95 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.subtitle == null) {
-      return _noSubtitleState();
-    }
+    final genState = ref.watch(generationProvider)[widget.bvid];
+    final isGenerating = genState?.isRunning ?? false;
+    final content = genState?.content;
+    final error = genState?.error;
+    final isCompleted = genState?.isCompleted ?? false;
 
-    // 流式输出或已选中的总结
-    if (_summary != null || _generating) {
-      return _streamingView();
-    }
+    if (widget.subtitle == null) return _noSubtitleState();
 
-    return _emptyState();
-  }
-
-  Widget _streamingView() {
-    final isComplete = _summary != null && !_generating;
-    return Column(
-      children: [
-        if (_generating)
-          LinearProgressIndicator(
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-            valueColor: AlwaysStoppedAnimation(
-              Theme.of(context).colorScheme.primary,
-            ),
+    // 查看已保存的总结
+    if (_viewing != null) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Markdown(data: _viewing!, selectable: true),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _viewing = null),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('返回'),
           ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (_error != null)
-                Card(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(_error!),
-                  ),
-                ),
-              if (_generating && (_summary == null || _summary!.isEmpty))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'AI 思考中…',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                        ),
-                      ],
+        ],
+      );
+    }
+
+    // 正在生成或已生成
+    if (isGenerating || isCompleted || (content?.isNotEmpty ?? false)) {
+      return Column(
+        children: [
+          if (isGenerating)
+            LinearProgressIndicator(
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+            ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (error != null)
+                  Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(error),
                     ),
                   ),
-                ),
-              if (_summary != null && _summary!.isNotEmpty)
-                isComplete
-                    ? Markdown(data: _summary!, selectable: true)
-                    : SelectableText(
-                        _summary!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-            ],
-          ),
-        ),
-        if (_generating)
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: FilledButton.tonalIcon(
-              onPressed: () {
-                _streamingSummaryId = null;
-                setState(() => _generating = false);
-              },
-              icon: const Icon(Icons.stop),
-              label: const Text('停止生成'),
+                if (isGenerating && (content == null || content.isEmpty))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(height: 16),
+                        Text('AI 思考中…', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.outline)),
+                      ]),
+                    ),
+                  ),
+                if (content != null && content.isNotEmpty)
+                  isCompleted
+                      ? Markdown(data: content, selectable: true)
+                      : SelectableText(content, style: Theme.of(context).textTheme.bodyMedium),
+              ],
             ),
           ),
-      ],
-    );
-  }
+          if (isGenerating)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: FilledButton.tonalIcon(
+                onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
+                icon: const Icon(Icons.stop),
+                label: const Text('停止生成'),
+              ),
+            ),
+        ],
+      );
+    }
 
-  Widget _emptyState() {
+    // 空状态 (错误可能来自上次失败的生成)
+    final genError = genState?.error;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null)
+          if (genError != null)
             Card(
               color: Theme.of(context).colorScheme.errorContainer,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(_error!),
+                child: Text(genError),
               ),
             ),
           Row(
@@ -491,15 +409,19 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: () async {
-                setState(() => _generating = true);
+                setState(() => _downloading = true);
                 try {
                   final repo = ref.read(videoRepositoryProvider);
                   await repo.downloadAllSubtitles(widget.bvid);
                   widget.onChanged();
                 } catch (e) {
-                  setState(() => _error = '$e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('$e')),
+                    );
+                  }
                 } finally {
-                  if (mounted) setState(() => _generating = false);
+                  if (mounted) setState(() => _downloading = false);
                 }
               },
               icon: const Icon(Icons.download),
