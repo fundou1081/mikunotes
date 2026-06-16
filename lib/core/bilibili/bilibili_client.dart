@@ -156,6 +156,41 @@ class BilibiliClient {
     return resp.data['data'] as Map<String, dynamic>;
   }
 
+  /// 解析 b23.tv 短链接，返回真实 B站 URL
+  /// 处理: b23.tv/xxx, bili2233.cn/xxx, 各种短链服务
+  Future<String> resolveShortUrl(String shortUrl) async {
+    if (!shortUrl.contains('b23.tv') &&
+        !shortUrl.contains('bili2233.cn') &&
+        !shortUrl.contains('bili22.cn')) {
+      return shortUrl;
+    }
+
+    // 使用 HEAD 跟随重定向（但有些服务不响应 HEAD，用 GET 保险）
+    try {
+      final resp = await _dio.head(
+        shortUrl,
+        options: Options(
+          followRedirects: true,
+          validateStatus: (s) => s != null && s < 500,
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+      return resp.realUri.toString();
+    } catch (e) {
+      // HEAD 失败，尝试 GET
+      final resp = await _dio.get(
+        shortUrl,
+        options: Options(
+          followRedirects: true,
+          responseType: ResponseType.plain,
+          validateStatus: (s) => s != null && s < 500,
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+      return resp.realUri.toString();
+    }
+  }
+
   /// 获取字幕列表 (需要登录)
   Future<Map<String, dynamic>> getSubtitleInfo({
     required int aid,

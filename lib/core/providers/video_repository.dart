@@ -13,16 +13,31 @@ class VideoRepository {
   VideoRepository(this._bili, this._db);
 
   /// 从 URL 或 BV号 解析 BV号
-  String? parseBvid(String input) {
-    final match = RegExp(r'BV[A-Za-z0-9]{10}').firstMatch(input);
+  /// 如果是短链接 (b23.tv/xxx)，会先解析为完整 URL
+  Future<String?> parseBvid(String input) async {
+    String url = input.trim();
+
+    // 短链接需要先解析
+    if (RegExp(r'https?://(b23\.tv|bili2233\.cn|bili22\.cn)/[A-Za-z0-9]+')
+        .hasMatch(url)) {
+      try {
+        url = await _bili.resolveShortUrl(url);
+      } catch (e) {
+        // 解析失败，fallthrough
+      }
+    }
+
+    // 匹配 BV 号
+    final match = RegExp(r'BV[A-Za-z0-9]{10}').firstMatch(url);
     return match?.group(0);
   }
 
   /// 导入视频: 获取信息 + 下载字幕
   Future<model.Video?> addVideo(String urlOrBvid) async {
-    final bvid = parseBvid(urlOrBvid);
+    final bvid = await parseBvid(urlOrBvid);
     if (bvid == null) {
-      throw const FormatException('无法从输入中提取 BVID');
+      throw const FormatException(
+          '无法从输入中提取 BVID（请检查链接是否正确）');
     }
 
     if (!_bili.isLoggedIn) {
