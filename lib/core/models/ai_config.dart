@@ -3,7 +3,7 @@ enum LLMProvider {
   minimax('MiniMax', 'https://api.minimax.chat/v1', 'MiniMax-M2.7'),
   minimaxFree('MiniMax Free', 'https://api.minimaxi.com/v1', 'MiniMax-M2.5-Lightning'),
   ollama('Ollama Cloud', 'https://ollama.com/v1', 'gemma4:31b-cloud'),
-  zhipu('智谱 GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
+  zhipu('智谱 GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4.6'),
   custom('自定义', '', '');
 
   final String label;
