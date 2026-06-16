@@ -9,7 +9,7 @@
     <application
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true"
-        android:label="mikunotes"
+        android:label="MikuNotes"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
