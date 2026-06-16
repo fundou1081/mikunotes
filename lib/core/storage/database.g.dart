@@ -508,6 +508,22 @@ class $SubtitlesTable extends Subtitles
   late final GeneratedColumn<String> plainText = GeneratedColumn<String>(
       'plain_text', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _charCountMeta =
+      const VerificationMeta('charCount');
+  @override
+  late final GeneratedColumn<int> charCount = GeneratedColumn<int>(
+      'char_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _entryCountMeta =
+      const VerificationMeta('entryCount');
+  @override
+  late final GeneratedColumn<int> entryCount = GeneratedColumn<int>(
+      'entry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _downloadedAtMeta =
       const VerificationMeta('downloadedAt');
   @override
@@ -515,8 +531,17 @@ class $SubtitlesTable extends Subtitles
       'downloaded_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, bvid, pageNum, language, rawJson, plainText, downloadedAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        bvid,
+        pageNum,
+        language,
+        rawJson,
+        plainText,
+        charCount,
+        entryCount,
+        downloadedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -558,6 +583,16 @@ class $SubtitlesTable extends Subtitles
     } else if (isInserting) {
       context.missing(_plainTextMeta);
     }
+    if (data.containsKey('char_count')) {
+      context.handle(_charCountMeta,
+          charCount.isAcceptableOrUnknown(data['char_count']!, _charCountMeta));
+    }
+    if (data.containsKey('entry_count')) {
+      context.handle(
+          _entryCountMeta,
+          entryCount.isAcceptableOrUnknown(
+              data['entry_count']!, _entryCountMeta));
+    }
     if (data.containsKey('downloaded_at')) {
       context.handle(
           _downloadedAtMeta,
@@ -591,6 +626,10 @@ class $SubtitlesTable extends Subtitles
           .read(DriftSqlType.string, data['${effectivePrefix}raw_json'])!,
       plainText: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}plain_text'])!,
+      charCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}char_count'])!,
+      entryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}entry_count'])!,
       downloadedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}downloaded_at'])!,
     );
@@ -609,6 +648,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
   final String language;
   final String rawJson;
   final String plainText;
+  final int charCount;
+  final int entryCount;
   final DateTime downloadedAt;
   const Subtitle(
       {required this.id,
@@ -617,6 +658,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
       required this.language,
       required this.rawJson,
       required this.plainText,
+      required this.charCount,
+      required this.entryCount,
       required this.downloadedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -627,6 +670,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
     map['language'] = Variable<String>(language);
     map['raw_json'] = Variable<String>(rawJson);
     map['plain_text'] = Variable<String>(plainText);
+    map['char_count'] = Variable<int>(charCount);
+    map['entry_count'] = Variable<int>(entryCount);
     map['downloaded_at'] = Variable<DateTime>(downloadedAt);
     return map;
   }
@@ -639,6 +684,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
       language: Value(language),
       rawJson: Value(rawJson),
       plainText: Value(plainText),
+      charCount: Value(charCount),
+      entryCount: Value(entryCount),
       downloadedAt: Value(downloadedAt),
     );
   }
@@ -653,6 +700,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
       language: serializer.fromJson<String>(json['language']),
       rawJson: serializer.fromJson<String>(json['rawJson']),
       plainText: serializer.fromJson<String>(json['plainText']),
+      charCount: serializer.fromJson<int>(json['charCount']),
+      entryCount: serializer.fromJson<int>(json['entryCount']),
       downloadedAt: serializer.fromJson<DateTime>(json['downloadedAt']),
     );
   }
@@ -666,6 +715,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
       'language': serializer.toJson<String>(language),
       'rawJson': serializer.toJson<String>(rawJson),
       'plainText': serializer.toJson<String>(plainText),
+      'charCount': serializer.toJson<int>(charCount),
+      'entryCount': serializer.toJson<int>(entryCount),
       'downloadedAt': serializer.toJson<DateTime>(downloadedAt),
     };
   }
@@ -677,6 +728,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
           String? language,
           String? rawJson,
           String? plainText,
+          int? charCount,
+          int? entryCount,
           DateTime? downloadedAt}) =>
       Subtitle(
         id: id ?? this.id,
@@ -685,6 +738,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
         language: language ?? this.language,
         rawJson: rawJson ?? this.rawJson,
         plainText: plainText ?? this.plainText,
+        charCount: charCount ?? this.charCount,
+        entryCount: entryCount ?? this.entryCount,
         downloadedAt: downloadedAt ?? this.downloadedAt,
       );
   Subtitle copyWithCompanion(SubtitlesCompanion data) {
@@ -695,6 +750,9 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
       language: data.language.present ? data.language.value : this.language,
       rawJson: data.rawJson.present ? data.rawJson.value : this.rawJson,
       plainText: data.plainText.present ? data.plainText.value : this.plainText,
+      charCount: data.charCount.present ? data.charCount.value : this.charCount,
+      entryCount:
+          data.entryCount.present ? data.entryCount.value : this.entryCount,
       downloadedAt: data.downloadedAt.present
           ? data.downloadedAt.value
           : this.downloadedAt,
@@ -710,14 +768,16 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
           ..write('language: $language, ')
           ..write('rawJson: $rawJson, ')
           ..write('plainText: $plainText, ')
+          ..write('charCount: $charCount, ')
+          ..write('entryCount: $entryCount, ')
           ..write('downloadedAt: $downloadedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, bvid, pageNum, language, rawJson, plainText, downloadedAt);
+  int get hashCode => Object.hash(id, bvid, pageNum, language, rawJson,
+      plainText, charCount, entryCount, downloadedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -728,6 +788,8 @@ class Subtitle extends DataClass implements Insertable<Subtitle> {
           other.language == this.language &&
           other.rawJson == this.rawJson &&
           other.plainText == this.plainText &&
+          other.charCount == this.charCount &&
+          other.entryCount == this.entryCount &&
           other.downloadedAt == this.downloadedAt);
 }
 
@@ -738,6 +800,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
   final Value<String> language;
   final Value<String> rawJson;
   final Value<String> plainText;
+  final Value<int> charCount;
+  final Value<int> entryCount;
   final Value<DateTime> downloadedAt;
   const SubtitlesCompanion({
     this.id = const Value.absent(),
@@ -746,6 +810,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
     this.language = const Value.absent(),
     this.rawJson = const Value.absent(),
     this.plainText = const Value.absent(),
+    this.charCount = const Value.absent(),
+    this.entryCount = const Value.absent(),
     this.downloadedAt = const Value.absent(),
   });
   SubtitlesCompanion.insert({
@@ -755,6 +821,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
     required String language,
     required String rawJson,
     required String plainText,
+    this.charCount = const Value.absent(),
+    this.entryCount = const Value.absent(),
     required DateTime downloadedAt,
   })  : bvid = Value(bvid),
         language = Value(language),
@@ -768,6 +836,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
     Expression<String>? language,
     Expression<String>? rawJson,
     Expression<String>? plainText,
+    Expression<int>? charCount,
+    Expression<int>? entryCount,
     Expression<DateTime>? downloadedAt,
   }) {
     return RawValuesInsertable({
@@ -777,6 +847,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
       if (language != null) 'language': language,
       if (rawJson != null) 'raw_json': rawJson,
       if (plainText != null) 'plain_text': plainText,
+      if (charCount != null) 'char_count': charCount,
+      if (entryCount != null) 'entry_count': entryCount,
       if (downloadedAt != null) 'downloaded_at': downloadedAt,
     });
   }
@@ -788,6 +860,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
       Value<String>? language,
       Value<String>? rawJson,
       Value<String>? plainText,
+      Value<int>? charCount,
+      Value<int>? entryCount,
       Value<DateTime>? downloadedAt}) {
     return SubtitlesCompanion(
       id: id ?? this.id,
@@ -796,6 +870,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
       language: language ?? this.language,
       rawJson: rawJson ?? this.rawJson,
       plainText: plainText ?? this.plainText,
+      charCount: charCount ?? this.charCount,
+      entryCount: entryCount ?? this.entryCount,
       downloadedAt: downloadedAt ?? this.downloadedAt,
     );
   }
@@ -821,6 +897,12 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
     if (plainText.present) {
       map['plain_text'] = Variable<String>(plainText.value);
     }
+    if (charCount.present) {
+      map['char_count'] = Variable<int>(charCount.value);
+    }
+    if (entryCount.present) {
+      map['entry_count'] = Variable<int>(entryCount.value);
+    }
     if (downloadedAt.present) {
       map['downloaded_at'] = Variable<DateTime>(downloadedAt.value);
     }
@@ -836,6 +918,8 @@ class SubtitlesCompanion extends UpdateCompanion<Subtitle> {
           ..write('language: $language, ')
           ..write('rawJson: $rawJson, ')
           ..write('plainText: $plainText, ')
+          ..write('charCount: $charCount, ')
+          ..write('entryCount: $entryCount, ')
           ..write('downloadedAt: $downloadedAt')
           ..write(')'))
         .toString();
@@ -858,6 +942,13 @@ class $SummariesTable extends Summaries
   late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
       'bvid', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumn<String> type = GeneratedColumn<String>(
@@ -900,8 +991,17 @@ class $SummariesTable extends Summaries
       'created_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, bvid, type, content, modelUsed, promptUsed, targetTopic, createdAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        bvid,
+        title,
+        type,
+        content,
+        modelUsed,
+        promptUsed,
+        targetTopic,
+        createdAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -922,6 +1022,10 @@ class $SummariesTable extends Summaries
           _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
     } else if (isInserting) {
       context.missing(_bvidMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
     }
     if (data.containsKey('type')) {
       context.handle(
@@ -970,6 +1074,8 @@ class $SummariesTable extends Summaries
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       bvid: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
       type: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
       content: attachedDatabase.typeMapping
@@ -994,6 +1100,7 @@ class $SummariesTable extends Summaries
 class Summary extends DataClass implements Insertable<Summary> {
   final String id;
   final String bvid;
+  final String title;
   final String type;
   final String content;
   final String modelUsed;
@@ -1003,6 +1110,7 @@ class Summary extends DataClass implements Insertable<Summary> {
   const Summary(
       {required this.id,
       required this.bvid,
+      required this.title,
       required this.type,
       required this.content,
       required this.modelUsed,
@@ -1014,6 +1122,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['bvid'] = Variable<String>(bvid);
+    map['title'] = Variable<String>(title);
     map['type'] = Variable<String>(type);
     map['content'] = Variable<String>(content);
     map['model_used'] = Variable<String>(modelUsed);
@@ -1027,6 +1136,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     return SummariesCompanion(
       id: Value(id),
       bvid: Value(bvid),
+      title: Value(title),
       type: Value(type),
       content: Value(content),
       modelUsed: Value(modelUsed),
@@ -1042,6 +1152,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     return Summary(
       id: serializer.fromJson<String>(json['id']),
       bvid: serializer.fromJson<String>(json['bvid']),
+      title: serializer.fromJson<String>(json['title']),
       type: serializer.fromJson<String>(json['type']),
       content: serializer.fromJson<String>(json['content']),
       modelUsed: serializer.fromJson<String>(json['modelUsed']),
@@ -1056,6 +1167,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'bvid': serializer.toJson<String>(bvid),
+      'title': serializer.toJson<String>(title),
       'type': serializer.toJson<String>(type),
       'content': serializer.toJson<String>(content),
       'modelUsed': serializer.toJson<String>(modelUsed),
@@ -1068,6 +1180,7 @@ class Summary extends DataClass implements Insertable<Summary> {
   Summary copyWith(
           {String? id,
           String? bvid,
+          String? title,
           String? type,
           String? content,
           String? modelUsed,
@@ -1077,6 +1190,7 @@ class Summary extends DataClass implements Insertable<Summary> {
       Summary(
         id: id ?? this.id,
         bvid: bvid ?? this.bvid,
+        title: title ?? this.title,
         type: type ?? this.type,
         content: content ?? this.content,
         modelUsed: modelUsed ?? this.modelUsed,
@@ -1088,6 +1202,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     return Summary(
       id: data.id.present ? data.id.value : this.id,
       bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      title: data.title.present ? data.title.value : this.title,
       type: data.type.present ? data.type.value : this.type,
       content: data.content.present ? data.content.value : this.content,
       modelUsed: data.modelUsed.present ? data.modelUsed.value : this.modelUsed,
@@ -1104,6 +1219,7 @@ class Summary extends DataClass implements Insertable<Summary> {
     return (StringBuffer('Summary(')
           ..write('id: $id, ')
           ..write('bvid: $bvid, ')
+          ..write('title: $title, ')
           ..write('type: $type, ')
           ..write('content: $content, ')
           ..write('modelUsed: $modelUsed, ')
@@ -1115,14 +1231,15 @@ class Summary extends DataClass implements Insertable<Summary> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, bvid, type, content, modelUsed, promptUsed, targetTopic, createdAt);
+  int get hashCode => Object.hash(id, bvid, title, type, content, modelUsed,
+      promptUsed, targetTopic, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Summary &&
           other.id == this.id &&
           other.bvid == this.bvid &&
+          other.title == this.title &&
           other.type == this.type &&
           other.content == this.content &&
           other.modelUsed == this.modelUsed &&
@@ -1134,6 +1251,7 @@ class Summary extends DataClass implements Insertable<Summary> {
 class SummariesCompanion extends UpdateCompanion<Summary> {
   final Value<String> id;
   final Value<String> bvid;
+  final Value<String> title;
   final Value<String> type;
   final Value<String> content;
   final Value<String> modelUsed;
@@ -1144,6 +1262,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   const SummariesCompanion({
     this.id = const Value.absent(),
     this.bvid = const Value.absent(),
+    this.title = const Value.absent(),
     this.type = const Value.absent(),
     this.content = const Value.absent(),
     this.modelUsed = const Value.absent(),
@@ -1155,6 +1274,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   SummariesCompanion.insert({
     required String id,
     required String bvid,
+    this.title = const Value.absent(),
     required String type,
     required String content,
     this.modelUsed = const Value.absent(),
@@ -1170,6 +1290,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   static Insertable<Summary> custom({
     Expression<String>? id,
     Expression<String>? bvid,
+    Expression<String>? title,
     Expression<String>? type,
     Expression<String>? content,
     Expression<String>? modelUsed,
@@ -1181,6 +1302,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (bvid != null) 'bvid': bvid,
+      if (title != null) 'title': title,
       if (type != null) 'type': type,
       if (content != null) 'content': content,
       if (modelUsed != null) 'model_used': modelUsed,
@@ -1194,6 +1316,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   SummariesCompanion copyWith(
       {Value<String>? id,
       Value<String>? bvid,
+      Value<String>? title,
       Value<String>? type,
       Value<String>? content,
       Value<String>? modelUsed,
@@ -1204,6 +1327,7 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     return SummariesCompanion(
       id: id ?? this.id,
       bvid: bvid ?? this.bvid,
+      title: title ?? this.title,
       type: type ?? this.type,
       content: content ?? this.content,
       modelUsed: modelUsed ?? this.modelUsed,
@@ -1222,6 +1346,9 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     }
     if (bvid.present) {
       map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
     }
     if (type.present) {
       map['type'] = Variable<String>(type.value);
@@ -1252,12 +1379,323 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
     return (StringBuffer('SummariesCompanion(')
           ..write('id: $id, ')
           ..write('bvid: $bvid, ')
+          ..write('title: $title, ')
           ..write('type: $type, ')
           ..write('content: $content, ')
           ..write('modelUsed: $modelUsed, ')
           ..write('promptUsed: $promptUsed, ')
           ..write('targetTopic: $targetTopic, ')
           ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ChatSessionsTable extends ChatSessions
+    with TableInfo<$ChatSessionsTable, ChatSession> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChatSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  @override
+  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
+      'bvid', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('新对话'));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _lastActiveAtMeta =
+      const VerificationMeta('lastActiveAt');
+  @override
+  late final GeneratedColumn<DateTime> lastActiveAt = GeneratedColumn<DateTime>(
+      'last_active_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, bvid, title, createdAt, lastActiveAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'chat_sessions';
+  @override
+  VerificationContext validateIntegrity(Insertable<ChatSession> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('bvid')) {
+      context.handle(
+          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
+    } else if (isInserting) {
+      context.missing(_bvidMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('last_active_at')) {
+      context.handle(
+          _lastActiveAtMeta,
+          lastActiveAt.isAcceptableOrUnknown(
+              data['last_active_at']!, _lastActiveAtMeta));
+    } else if (isInserting) {
+      context.missing(_lastActiveAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ChatSession map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChatSession(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      bvid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      lastActiveAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_active_at'])!,
+    );
+  }
+
+  @override
+  $ChatSessionsTable createAlias(String alias) {
+    return $ChatSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class ChatSession extends DataClass implements Insertable<ChatSession> {
+  final String id;
+  final String bvid;
+  final String title;
+  final DateTime createdAt;
+  final DateTime lastActiveAt;
+  const ChatSession(
+      {required this.id,
+      required this.bvid,
+      required this.title,
+      required this.createdAt,
+      required this.lastActiveAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['bvid'] = Variable<String>(bvid);
+    map['title'] = Variable<String>(title);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['last_active_at'] = Variable<DateTime>(lastActiveAt);
+    return map;
+  }
+
+  ChatSessionsCompanion toCompanion(bool nullToAbsent) {
+    return ChatSessionsCompanion(
+      id: Value(id),
+      bvid: Value(bvid),
+      title: Value(title),
+      createdAt: Value(createdAt),
+      lastActiveAt: Value(lastActiveAt),
+    );
+  }
+
+  factory ChatSession.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChatSession(
+      id: serializer.fromJson<String>(json['id']),
+      bvid: serializer.fromJson<String>(json['bvid']),
+      title: serializer.fromJson<String>(json['title']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      lastActiveAt: serializer.fromJson<DateTime>(json['lastActiveAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'bvid': serializer.toJson<String>(bvid),
+      'title': serializer.toJson<String>(title),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'lastActiveAt': serializer.toJson<DateTime>(lastActiveAt),
+    };
+  }
+
+  ChatSession copyWith(
+          {String? id,
+          String? bvid,
+          String? title,
+          DateTime? createdAt,
+          DateTime? lastActiveAt}) =>
+      ChatSession(
+        id: id ?? this.id,
+        bvid: bvid ?? this.bvid,
+        title: title ?? this.title,
+        createdAt: createdAt ?? this.createdAt,
+        lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      );
+  ChatSession copyWithCompanion(ChatSessionsCompanion data) {
+    return ChatSession(
+      id: data.id.present ? data.id.value : this.id,
+      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      title: data.title.present ? data.title.value : this.title,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      lastActiveAt: data.lastActiveAt.present
+          ? data.lastActiveAt.value
+          : this.lastActiveAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChatSession(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('title: $title, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastActiveAt: $lastActiveAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, bvid, title, createdAt, lastActiveAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChatSession &&
+          other.id == this.id &&
+          other.bvid == this.bvid &&
+          other.title == this.title &&
+          other.createdAt == this.createdAt &&
+          other.lastActiveAt == this.lastActiveAt);
+}
+
+class ChatSessionsCompanion extends UpdateCompanion<ChatSession> {
+  final Value<String> id;
+  final Value<String> bvid;
+  final Value<String> title;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> lastActiveAt;
+  final Value<int> rowid;
+  const ChatSessionsCompanion({
+    this.id = const Value.absent(),
+    this.bvid = const Value.absent(),
+    this.title = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.lastActiveAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ChatSessionsCompanion.insert({
+    required String id,
+    required String bvid,
+    this.title = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime lastActiveAt,
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        bvid = Value(bvid),
+        createdAt = Value(createdAt),
+        lastActiveAt = Value(lastActiveAt);
+  static Insertable<ChatSession> custom({
+    Expression<String>? id,
+    Expression<String>? bvid,
+    Expression<String>? title,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? lastActiveAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bvid != null) 'bvid': bvid,
+      if (title != null) 'title': title,
+      if (createdAt != null) 'created_at': createdAt,
+      if (lastActiveAt != null) 'last_active_at': lastActiveAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ChatSessionsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? bvid,
+      Value<String>? title,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? lastActiveAt,
+      Value<int>? rowid}) {
+    return ChatSessionsCompanion(
+      id: id ?? this.id,
+      bvid: bvid ?? this.bvid,
+      title: title ?? this.title,
+      createdAt: createdAt ?? this.createdAt,
+      lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (bvid.present) {
+      map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (lastActiveAt.present) {
+      map['last_active_at'] = Variable<DateTime>(lastActiveAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChatSessionsCompanion(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('title: $title, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastActiveAt: $lastActiveAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1275,10 +1713,11 @@ class $ChatMessagesTable extends ChatMessages
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  static const VerificationMeta _sessionIdMeta =
+      const VerificationMeta('sessionId');
   @override
-  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
-      'bvid', aliasedName, false,
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+      'session_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _roleMeta = const VerificationMeta('role');
   @override
@@ -1297,8 +1736,19 @@ class $ChatMessagesTable extends ChatMessages
   late final GeneratedColumn<DateTime> timestamp = GeneratedColumn<DateTime>(
       'timestamp', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _isCompressedMeta =
+      const VerificationMeta('isCompressed');
   @override
-  List<GeneratedColumn> get $columns => [id, bvid, role, content, timestamp];
+  late final GeneratedColumn<bool> isCompressed = GeneratedColumn<bool>(
+      'is_compressed', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_compressed" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, sessionId, role, content, timestamp, isCompressed];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1314,11 +1764,11 @@ class $ChatMessagesTable extends ChatMessages
     } else if (isInserting) {
       context.missing(_idMeta);
     }
-    if (data.containsKey('bvid')) {
-      context.handle(
-          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
+    if (data.containsKey('session_id')) {
+      context.handle(_sessionIdMeta,
+          sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta));
     } else if (isInserting) {
-      context.missing(_bvidMeta);
+      context.missing(_sessionIdMeta);
     }
     if (data.containsKey('role')) {
       context.handle(
@@ -1338,6 +1788,12 @@ class $ChatMessagesTable extends ChatMessages
     } else if (isInserting) {
       context.missing(_timestampMeta);
     }
+    if (data.containsKey('is_compressed')) {
+      context.handle(
+          _isCompressedMeta,
+          isCompressed.isAcceptableOrUnknown(
+              data['is_compressed']!, _isCompressedMeta));
+    }
     return context;
   }
 
@@ -1349,14 +1805,16 @@ class $ChatMessagesTable extends ChatMessages
     return ChatMessage(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      bvid: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      sessionId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}session_id'])!,
       role: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}role'])!,
       content: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
       timestamp: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}timestamp'])!,
+      isCompressed: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_compressed'])!,
     );
   }
 
@@ -1368,34 +1826,38 @@ class $ChatMessagesTable extends ChatMessages
 
 class ChatMessage extends DataClass implements Insertable<ChatMessage> {
   final String id;
-  final String bvid;
+  final String sessionId;
   final String role;
   final String content;
   final DateTime timestamp;
+  final bool isCompressed;
   const ChatMessage(
       {required this.id,
-      required this.bvid,
+      required this.sessionId,
       required this.role,
       required this.content,
-      required this.timestamp});
+      required this.timestamp,
+      required this.isCompressed});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['bvid'] = Variable<String>(bvid);
+    map['session_id'] = Variable<String>(sessionId);
     map['role'] = Variable<String>(role);
     map['content'] = Variable<String>(content);
     map['timestamp'] = Variable<DateTime>(timestamp);
+    map['is_compressed'] = Variable<bool>(isCompressed);
     return map;
   }
 
   ChatMessagesCompanion toCompanion(bool nullToAbsent) {
     return ChatMessagesCompanion(
       id: Value(id),
-      bvid: Value(bvid),
+      sessionId: Value(sessionId),
       role: Value(role),
       content: Value(content),
       timestamp: Value(timestamp),
+      isCompressed: Value(isCompressed),
     );
   }
 
@@ -1404,10 +1866,11 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ChatMessage(
       id: serializer.fromJson<String>(json['id']),
-      bvid: serializer.fromJson<String>(json['bvid']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
       role: serializer.fromJson<String>(json['role']),
       content: serializer.fromJson<String>(json['content']),
       timestamp: serializer.fromJson<DateTime>(json['timestamp']),
+      isCompressed: serializer.fromJson<bool>(json['isCompressed']),
     );
   }
   @override
@@ -1415,33 +1878,39 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'bvid': serializer.toJson<String>(bvid),
+      'sessionId': serializer.toJson<String>(sessionId),
       'role': serializer.toJson<String>(role),
       'content': serializer.toJson<String>(content),
       'timestamp': serializer.toJson<DateTime>(timestamp),
+      'isCompressed': serializer.toJson<bool>(isCompressed),
     };
   }
 
   ChatMessage copyWith(
           {String? id,
-          String? bvid,
+          String? sessionId,
           String? role,
           String? content,
-          DateTime? timestamp}) =>
+          DateTime? timestamp,
+          bool? isCompressed}) =>
       ChatMessage(
         id: id ?? this.id,
-        bvid: bvid ?? this.bvid,
+        sessionId: sessionId ?? this.sessionId,
         role: role ?? this.role,
         content: content ?? this.content,
         timestamp: timestamp ?? this.timestamp,
+        isCompressed: isCompressed ?? this.isCompressed,
       );
   ChatMessage copyWithCompanion(ChatMessagesCompanion data) {
     return ChatMessage(
       id: data.id.present ? data.id.value : this.id,
-      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       role: data.role.present ? data.role.value : this.role,
       content: data.content.present ? data.content.value : this.content,
       timestamp: data.timestamp.present ? data.timestamp.value : this.timestamp,
+      isCompressed: data.isCompressed.present
+          ? data.isCompressed.value
+          : this.isCompressed,
     );
   }
 
@@ -1449,85 +1918,95 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
   String toString() {
     return (StringBuffer('ChatMessage(')
           ..write('id: $id, ')
-          ..write('bvid: $bvid, ')
+          ..write('sessionId: $sessionId, ')
           ..write('role: $role, ')
           ..write('content: $content, ')
-          ..write('timestamp: $timestamp')
+          ..write('timestamp: $timestamp, ')
+          ..write('isCompressed: $isCompressed')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, bvid, role, content, timestamp);
+  int get hashCode =>
+      Object.hash(id, sessionId, role, content, timestamp, isCompressed);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ChatMessage &&
           other.id == this.id &&
-          other.bvid == this.bvid &&
+          other.sessionId == this.sessionId &&
           other.role == this.role &&
           other.content == this.content &&
-          other.timestamp == this.timestamp);
+          other.timestamp == this.timestamp &&
+          other.isCompressed == this.isCompressed);
 }
 
 class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   final Value<String> id;
-  final Value<String> bvid;
+  final Value<String> sessionId;
   final Value<String> role;
   final Value<String> content;
   final Value<DateTime> timestamp;
+  final Value<bool> isCompressed;
   final Value<int> rowid;
   const ChatMessagesCompanion({
     this.id = const Value.absent(),
-    this.bvid = const Value.absent(),
+    this.sessionId = const Value.absent(),
     this.role = const Value.absent(),
     this.content = const Value.absent(),
     this.timestamp = const Value.absent(),
+    this.isCompressed = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ChatMessagesCompanion.insert({
     required String id,
-    required String bvid,
+    required String sessionId,
     required String role,
     required String content,
     required DateTime timestamp,
+    this.isCompressed = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
-        bvid = Value(bvid),
+        sessionId = Value(sessionId),
         role = Value(role),
         content = Value(content),
         timestamp = Value(timestamp);
   static Insertable<ChatMessage> custom({
     Expression<String>? id,
-    Expression<String>? bvid,
+    Expression<String>? sessionId,
     Expression<String>? role,
     Expression<String>? content,
     Expression<DateTime>? timestamp,
+    Expression<bool>? isCompressed,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (bvid != null) 'bvid': bvid,
+      if (sessionId != null) 'session_id': sessionId,
       if (role != null) 'role': role,
       if (content != null) 'content': content,
       if (timestamp != null) 'timestamp': timestamp,
+      if (isCompressed != null) 'is_compressed': isCompressed,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   ChatMessagesCompanion copyWith(
       {Value<String>? id,
-      Value<String>? bvid,
+      Value<String>? sessionId,
       Value<String>? role,
       Value<String>? content,
       Value<DateTime>? timestamp,
+      Value<bool>? isCompressed,
       Value<int>? rowid}) {
     return ChatMessagesCompanion(
       id: id ?? this.id,
-      bvid: bvid ?? this.bvid,
+      sessionId: sessionId ?? this.sessionId,
       role: role ?? this.role,
       content: content ?? this.content,
       timestamp: timestamp ?? this.timestamp,
+      isCompressed: isCompressed ?? this.isCompressed,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1538,8 +2017,8 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (bvid.present) {
-      map['bvid'] = Variable<String>(bvid.value);
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
     }
     if (role.present) {
       map['role'] = Variable<String>(role.value);
@@ -1549,6 +2028,9 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     }
     if (timestamp.present) {
       map['timestamp'] = Variable<DateTime>(timestamp.value);
+    }
+    if (isCompressed.present) {
+      map['is_compressed'] = Variable<bool>(isCompressed.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -1560,228 +2042,12 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   String toString() {
     return (StringBuffer('ChatMessagesCompanion(')
           ..write('id: $id, ')
-          ..write('bvid: $bvid, ')
+          ..write('sessionId: $sessionId, ')
           ..write('role: $role, ')
           ..write('content: $content, ')
           ..write('timestamp: $timestamp, ')
+          ..write('isCompressed: $isCompressed, ')
           ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $VideoTagsTable extends VideoTags
-    with TableInfo<$VideoTagsTable, VideoTag> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $VideoTagsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
-  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
-  @override
-  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
-      'bvid', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _tagMeta = const VerificationMeta('tag');
-  @override
-  late final GeneratedColumn<String> tag = GeneratedColumn<String>(
-      'tag', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  @override
-  List<GeneratedColumn> get $columns => [id, bvid, tag];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'video_tags';
-  @override
-  VerificationContext validateIntegrity(Insertable<VideoTag> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('bvid')) {
-      context.handle(
-          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
-    } else if (isInserting) {
-      context.missing(_bvidMeta);
-    }
-    if (data.containsKey('tag')) {
-      context.handle(
-          _tagMeta, tag.isAcceptableOrUnknown(data['tag']!, _tagMeta));
-    } else if (isInserting) {
-      context.missing(_tagMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  List<Set<GeneratedColumn>> get uniqueKeys => [
-        {bvid, tag},
-      ];
-  @override
-  VideoTag map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VideoTag(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      bvid: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
-      tag: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}tag'])!,
-    );
-  }
-
-  @override
-  $VideoTagsTable createAlias(String alias) {
-    return $VideoTagsTable(attachedDatabase, alias);
-  }
-}
-
-class VideoTag extends DataClass implements Insertable<VideoTag> {
-  final int id;
-  final String bvid;
-  final String tag;
-  const VideoTag({required this.id, required this.bvid, required this.tag});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['bvid'] = Variable<String>(bvid);
-    map['tag'] = Variable<String>(tag);
-    return map;
-  }
-
-  VideoTagsCompanion toCompanion(bool nullToAbsent) {
-    return VideoTagsCompanion(
-      id: Value(id),
-      bvid: Value(bvid),
-      tag: Value(tag),
-    );
-  }
-
-  factory VideoTag.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VideoTag(
-      id: serializer.fromJson<int>(json['id']),
-      bvid: serializer.fromJson<String>(json['bvid']),
-      tag: serializer.fromJson<String>(json['tag']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'bvid': serializer.toJson<String>(bvid),
-      'tag': serializer.toJson<String>(tag),
-    };
-  }
-
-  VideoTag copyWith({int? id, String? bvid, String? tag}) => VideoTag(
-        id: id ?? this.id,
-        bvid: bvid ?? this.bvid,
-        tag: tag ?? this.tag,
-      );
-  VideoTag copyWithCompanion(VideoTagsCompanion data) {
-    return VideoTag(
-      id: data.id.present ? data.id.value : this.id,
-      bvid: data.bvid.present ? data.bvid.value : this.bvid,
-      tag: data.tag.present ? data.tag.value : this.tag,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VideoTag(')
-          ..write('id: $id, ')
-          ..write('bvid: $bvid, ')
-          ..write('tag: $tag')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, bvid, tag);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is VideoTag &&
-          other.id == this.id &&
-          other.bvid == this.bvid &&
-          other.tag == this.tag);
-}
-
-class VideoTagsCompanion extends UpdateCompanion<VideoTag> {
-  final Value<int> id;
-  final Value<String> bvid;
-  final Value<String> tag;
-  const VideoTagsCompanion({
-    this.id = const Value.absent(),
-    this.bvid = const Value.absent(),
-    this.tag = const Value.absent(),
-  });
-  VideoTagsCompanion.insert({
-    this.id = const Value.absent(),
-    required String bvid,
-    required String tag,
-  })  : bvid = Value(bvid),
-        tag = Value(tag);
-  static Insertable<VideoTag> custom({
-    Expression<int>? id,
-    Expression<String>? bvid,
-    Expression<String>? tag,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (bvid != null) 'bvid': bvid,
-      if (tag != null) 'tag': tag,
-    });
-  }
-
-  VideoTagsCompanion copyWith(
-      {Value<int>? id, Value<String>? bvid, Value<String>? tag}) {
-    return VideoTagsCompanion(
-      id: id ?? this.id,
-      bvid: bvid ?? this.bvid,
-      tag: tag ?? this.tag,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (bvid.present) {
-      map['bvid'] = Variable<String>(bvid.value);
-    }
-    if (tag.present) {
-      map['tag'] = Variable<String>(tag.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VideoTagsCompanion(')
-          ..write('id: $id, ')
-          ..write('bvid: $bvid, ')
-          ..write('tag: $tag')
           ..write(')'))
         .toString();
   }
@@ -1793,14 +2059,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $VideosTable videos = $VideosTable(this);
   late final $SubtitlesTable subtitles = $SubtitlesTable(this);
   late final $SummariesTable summaries = $SummariesTable(this);
+  late final $ChatSessionsTable chatSessions = $ChatSessionsTable(this);
   late final $ChatMessagesTable chatMessages = $ChatMessagesTable(this);
-  late final $VideoTagsTable videoTags = $VideoTagsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [videos, subtitles, summaries, chatMessages, videoTags];
+      [videos, subtitles, summaries, chatSessions, chatMessages];
 }
 
 typedef $$VideosTableCreateCompanionBuilder = VideosCompanion Function({
@@ -2035,6 +2301,8 @@ typedef $$SubtitlesTableCreateCompanionBuilder = SubtitlesCompanion Function({
   required String language,
   required String rawJson,
   required String plainText,
+  Value<int> charCount,
+  Value<int> entryCount,
   required DateTime downloadedAt,
 });
 typedef $$SubtitlesTableUpdateCompanionBuilder = SubtitlesCompanion Function({
@@ -2044,6 +2312,8 @@ typedef $$SubtitlesTableUpdateCompanionBuilder = SubtitlesCompanion Function({
   Value<String> language,
   Value<String> rawJson,
   Value<String> plainText,
+  Value<int> charCount,
+  Value<int> entryCount,
   Value<DateTime> downloadedAt,
 });
 
@@ -2073,6 +2343,12 @@ class $$SubtitlesTableFilterComposer
 
   ColumnFilters<String> get plainText => $composableBuilder(
       column: $table.plainText, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get charCount => $composableBuilder(
+      column: $table.charCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get entryCount => $composableBuilder(
+      column: $table.entryCount, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get downloadedAt => $composableBuilder(
       column: $table.downloadedAt, builder: (column) => ColumnFilters(column));
@@ -2105,6 +2381,12 @@ class $$SubtitlesTableOrderingComposer
   ColumnOrderings<String> get plainText => $composableBuilder(
       column: $table.plainText, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get charCount => $composableBuilder(
+      column: $table.charCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get entryCount => $composableBuilder(
+      column: $table.entryCount, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get downloadedAt => $composableBuilder(
       column: $table.downloadedAt,
       builder: (column) => ColumnOrderings(column));
@@ -2136,6 +2418,12 @@ class $$SubtitlesTableAnnotationComposer
 
   GeneratedColumn<String> get plainText =>
       $composableBuilder(column: $table.plainText, builder: (column) => column);
+
+  GeneratedColumn<int> get charCount =>
+      $composableBuilder(column: $table.charCount, builder: (column) => column);
+
+  GeneratedColumn<int> get entryCount => $composableBuilder(
+      column: $table.entryCount, builder: (column) => column);
 
   GeneratedColumn<DateTime> get downloadedAt => $composableBuilder(
       column: $table.downloadedAt, builder: (column) => column);
@@ -2170,6 +2458,8 @@ class $$SubtitlesTableTableManager extends RootTableManager<
             Value<String> language = const Value.absent(),
             Value<String> rawJson = const Value.absent(),
             Value<String> plainText = const Value.absent(),
+            Value<int> charCount = const Value.absent(),
+            Value<int> entryCount = const Value.absent(),
             Value<DateTime> downloadedAt = const Value.absent(),
           }) =>
               SubtitlesCompanion(
@@ -2179,6 +2469,8 @@ class $$SubtitlesTableTableManager extends RootTableManager<
             language: language,
             rawJson: rawJson,
             plainText: plainText,
+            charCount: charCount,
+            entryCount: entryCount,
             downloadedAt: downloadedAt,
           ),
           createCompanionCallback: ({
@@ -2188,6 +2480,8 @@ class $$SubtitlesTableTableManager extends RootTableManager<
             required String language,
             required String rawJson,
             required String plainText,
+            Value<int> charCount = const Value.absent(),
+            Value<int> entryCount = const Value.absent(),
             required DateTime downloadedAt,
           }) =>
               SubtitlesCompanion.insert(
@@ -2197,6 +2491,8 @@ class $$SubtitlesTableTableManager extends RootTableManager<
             language: language,
             rawJson: rawJson,
             plainText: plainText,
+            charCount: charCount,
+            entryCount: entryCount,
             downloadedAt: downloadedAt,
           ),
           withReferenceMapper: (p0) => p0
@@ -2221,6 +2517,7 @@ typedef $$SubtitlesTableProcessedTableManager = ProcessedTableManager<
 typedef $$SummariesTableCreateCompanionBuilder = SummariesCompanion Function({
   required String id,
   required String bvid,
+  Value<String> title,
   required String type,
   required String content,
   Value<String> modelUsed,
@@ -2232,6 +2529,7 @@ typedef $$SummariesTableCreateCompanionBuilder = SummariesCompanion Function({
 typedef $$SummariesTableUpdateCompanionBuilder = SummariesCompanion Function({
   Value<String> id,
   Value<String> bvid,
+  Value<String> title,
   Value<String> type,
   Value<String> content,
   Value<String> modelUsed,
@@ -2255,6 +2553,9 @@ class $$SummariesTableFilterComposer
 
   ColumnFilters<String> get bvid => $composableBuilder(
       column: $table.bvid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get type => $composableBuilder(
       column: $table.type, builder: (column) => ColumnFilters(column));
@@ -2290,6 +2591,9 @@ class $$SummariesTableOrderingComposer
   ColumnOrderings<String> get bvid => $composableBuilder(
       column: $table.bvid, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get type => $composableBuilder(
       column: $table.type, builder: (column) => ColumnOrderings(column));
 
@@ -2323,6 +2627,9 @@ class $$SummariesTableAnnotationComposer
 
   GeneratedColumn<String> get bvid =>
       $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
@@ -2368,6 +2675,7 @@ class $$SummariesTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> bvid = const Value.absent(),
+            Value<String> title = const Value.absent(),
             Value<String> type = const Value.absent(),
             Value<String> content = const Value.absent(),
             Value<String> modelUsed = const Value.absent(),
@@ -2379,6 +2687,7 @@ class $$SummariesTableTableManager extends RootTableManager<
               SummariesCompanion(
             id: id,
             bvid: bvid,
+            title: title,
             type: type,
             content: content,
             modelUsed: modelUsed,
@@ -2390,6 +2699,7 @@ class $$SummariesTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String bvid,
+            Value<String> title = const Value.absent(),
             required String type,
             required String content,
             Value<String> modelUsed = const Value.absent(),
@@ -2401,6 +2711,7 @@ class $$SummariesTableTableManager extends RootTableManager<
               SummariesCompanion.insert(
             id: id,
             bvid: bvid,
+            title: title,
             type: type,
             content: content,
             modelUsed: modelUsed,
@@ -2428,22 +2739,198 @@ typedef $$SummariesTableProcessedTableManager = ProcessedTableManager<
     (Summary, BaseReferences<_$AppDatabase, $SummariesTable, Summary>),
     Summary,
     PrefetchHooks Function()>;
-typedef $$ChatMessagesTableCreateCompanionBuilder = ChatMessagesCompanion
+typedef $$ChatSessionsTableCreateCompanionBuilder = ChatSessionsCompanion
     Function({
   required String id,
   required String bvid,
+  Value<String> title,
+  required DateTime createdAt,
+  required DateTime lastActiveAt,
+  Value<int> rowid,
+});
+typedef $$ChatSessionsTableUpdateCompanionBuilder = ChatSessionsCompanion
+    Function({
+  Value<String> id,
+  Value<String> bvid,
+  Value<String> title,
+  Value<DateTime> createdAt,
+  Value<DateTime> lastActiveAt,
+  Value<int> rowid,
+});
+
+class $$ChatSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $ChatSessionsTable> {
+  $$ChatSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastActiveAt => $composableBuilder(
+      column: $table.lastActiveAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$ChatSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ChatSessionsTable> {
+  $$ChatSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastActiveAt => $composableBuilder(
+      column: $table.lastActiveAt,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$ChatSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ChatSessionsTable> {
+  $$ChatSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bvid =>
+      $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastActiveAt => $composableBuilder(
+      column: $table.lastActiveAt, builder: (column) => column);
+}
+
+class $$ChatSessionsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ChatSessionsTable,
+    ChatSession,
+    $$ChatSessionsTableFilterComposer,
+    $$ChatSessionsTableOrderingComposer,
+    $$ChatSessionsTableAnnotationComposer,
+    $$ChatSessionsTableCreateCompanionBuilder,
+    $$ChatSessionsTableUpdateCompanionBuilder,
+    (
+      ChatSession,
+      BaseReferences<_$AppDatabase, $ChatSessionsTable, ChatSession>
+    ),
+    ChatSession,
+    PrefetchHooks Function()> {
+  $$ChatSessionsTableTableManager(_$AppDatabase db, $ChatSessionsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChatSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChatSessionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChatSessionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> bvid = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> lastActiveAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ChatSessionsCompanion(
+            id: id,
+            bvid: bvid,
+            title: title,
+            createdAt: createdAt,
+            lastActiveAt: lastActiveAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String bvid,
+            Value<String> title = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime lastActiveAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ChatSessionsCompanion.insert(
+            id: id,
+            bvid: bvid,
+            title: title,
+            createdAt: createdAt,
+            lastActiveAt: lastActiveAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ChatSessionsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ChatSessionsTable,
+    ChatSession,
+    $$ChatSessionsTableFilterComposer,
+    $$ChatSessionsTableOrderingComposer,
+    $$ChatSessionsTableAnnotationComposer,
+    $$ChatSessionsTableCreateCompanionBuilder,
+    $$ChatSessionsTableUpdateCompanionBuilder,
+    (
+      ChatSession,
+      BaseReferences<_$AppDatabase, $ChatSessionsTable, ChatSession>
+    ),
+    ChatSession,
+    PrefetchHooks Function()>;
+typedef $$ChatMessagesTableCreateCompanionBuilder = ChatMessagesCompanion
+    Function({
+  required String id,
+  required String sessionId,
   required String role,
   required String content,
   required DateTime timestamp,
+  Value<bool> isCompressed,
   Value<int> rowid,
 });
 typedef $$ChatMessagesTableUpdateCompanionBuilder = ChatMessagesCompanion
     Function({
   Value<String> id,
-  Value<String> bvid,
+  Value<String> sessionId,
   Value<String> role,
   Value<String> content,
   Value<DateTime> timestamp,
+  Value<bool> isCompressed,
   Value<int> rowid,
 });
 
@@ -2459,8 +2946,8 @@ class $$ChatMessagesTableFilterComposer
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get bvid => $composableBuilder(
-      column: $table.bvid, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get sessionId => $composableBuilder(
+      column: $table.sessionId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get role => $composableBuilder(
       column: $table.role, builder: (column) => ColumnFilters(column));
@@ -2470,6 +2957,9 @@ class $$ChatMessagesTableFilterComposer
 
   ColumnFilters<DateTime> get timestamp => $composableBuilder(
       column: $table.timestamp, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isCompressed => $composableBuilder(
+      column: $table.isCompressed, builder: (column) => ColumnFilters(column));
 }
 
 class $$ChatMessagesTableOrderingComposer
@@ -2484,8 +2974,8 @@ class $$ChatMessagesTableOrderingComposer
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get bvid => $composableBuilder(
-      column: $table.bvid, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+      column: $table.sessionId, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get role => $composableBuilder(
       column: $table.role, builder: (column) => ColumnOrderings(column));
@@ -2495,6 +2985,10 @@ class $$ChatMessagesTableOrderingComposer
 
   ColumnOrderings<DateTime> get timestamp => $composableBuilder(
       column: $table.timestamp, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isCompressed => $composableBuilder(
+      column: $table.isCompressed,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$ChatMessagesTableAnnotationComposer
@@ -2509,8 +3003,8 @@ class $$ChatMessagesTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get bvid =>
-      $composableBuilder(column: $table.bvid, builder: (column) => column);
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
 
   GeneratedColumn<String> get role =>
       $composableBuilder(column: $table.role, builder: (column) => column);
@@ -2520,6 +3014,9 @@ class $$ChatMessagesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get timestamp =>
       $composableBuilder(column: $table.timestamp, builder: (column) => column);
+
+  GeneratedColumn<bool> get isCompressed => $composableBuilder(
+      column: $table.isCompressed, builder: (column) => column);
 }
 
 class $$ChatMessagesTableTableManager extends RootTableManager<
@@ -2549,34 +3046,38 @@ class $$ChatMessagesTableTableManager extends RootTableManager<
               $$ChatMessagesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
-            Value<String> bvid = const Value.absent(),
+            Value<String> sessionId = const Value.absent(),
             Value<String> role = const Value.absent(),
             Value<String> content = const Value.absent(),
             Value<DateTime> timestamp = const Value.absent(),
+            Value<bool> isCompressed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ChatMessagesCompanion(
             id: id,
-            bvid: bvid,
+            sessionId: sessionId,
             role: role,
             content: content,
             timestamp: timestamp,
+            isCompressed: isCompressed,
             rowid: rowid,
           ),
           createCompanionCallback: ({
             required String id,
-            required String bvid,
+            required String sessionId,
             required String role,
             required String content,
             required DateTime timestamp,
+            Value<bool> isCompressed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ChatMessagesCompanion.insert(
             id: id,
-            bvid: bvid,
+            sessionId: sessionId,
             role: role,
             content: content,
             timestamp: timestamp,
+            isCompressed: isCompressed,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -2601,135 +3102,6 @@ typedef $$ChatMessagesTableProcessedTableManager = ProcessedTableManager<
     ),
     ChatMessage,
     PrefetchHooks Function()>;
-typedef $$VideoTagsTableCreateCompanionBuilder = VideoTagsCompanion Function({
-  Value<int> id,
-  required String bvid,
-  required String tag,
-});
-typedef $$VideoTagsTableUpdateCompanionBuilder = VideoTagsCompanion Function({
-  Value<int> id,
-  Value<String> bvid,
-  Value<String> tag,
-});
-
-class $$VideoTagsTableFilterComposer
-    extends Composer<_$AppDatabase, $VideoTagsTable> {
-  $$VideoTagsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<String> get bvid => $composableBuilder(
-      column: $table.bvid, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<String> get tag => $composableBuilder(
-      column: $table.tag, builder: (column) => ColumnFilters(column));
-}
-
-class $$VideoTagsTableOrderingComposer
-    extends Composer<_$AppDatabase, $VideoTagsTable> {
-  $$VideoTagsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<String> get bvid => $composableBuilder(
-      column: $table.bvid, builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<String> get tag => $composableBuilder(
-      column: $table.tag, builder: (column) => ColumnOrderings(column));
-}
-
-class $$VideoTagsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $VideoTagsTable> {
-  $$VideoTagsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get bvid =>
-      $composableBuilder(column: $table.bvid, builder: (column) => column);
-
-  GeneratedColumn<String> get tag =>
-      $composableBuilder(column: $table.tag, builder: (column) => column);
-}
-
-class $$VideoTagsTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $VideoTagsTable,
-    VideoTag,
-    $$VideoTagsTableFilterComposer,
-    $$VideoTagsTableOrderingComposer,
-    $$VideoTagsTableAnnotationComposer,
-    $$VideoTagsTableCreateCompanionBuilder,
-    $$VideoTagsTableUpdateCompanionBuilder,
-    (VideoTag, BaseReferences<_$AppDatabase, $VideoTagsTable, VideoTag>),
-    VideoTag,
-    PrefetchHooks Function()> {
-  $$VideoTagsTableTableManager(_$AppDatabase db, $VideoTagsTable table)
-      : super(TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$VideoTagsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$VideoTagsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$VideoTagsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            Value<String> bvid = const Value.absent(),
-            Value<String> tag = const Value.absent(),
-          }) =>
-              VideoTagsCompanion(
-            id: id,
-            bvid: bvid,
-            tag: tag,
-          ),
-          createCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            required String bvid,
-            required String tag,
-          }) =>
-              VideoTagsCompanion.insert(
-            id: id,
-            bvid: bvid,
-            tag: tag,
-          ),
-          withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
-              .toList(),
-          prefetchHooksCallback: null,
-        ));
-}
-
-typedef $$VideoTagsTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $VideoTagsTable,
-    VideoTag,
-    $$VideoTagsTableFilterComposer,
-    $$VideoTagsTableOrderingComposer,
-    $$VideoTagsTableAnnotationComposer,
-    $$VideoTagsTableCreateCompanionBuilder,
-    $$VideoTagsTableUpdateCompanionBuilder,
-    (VideoTag, BaseReferences<_$AppDatabase, $VideoTagsTable, VideoTag>),
-    VideoTag,
-    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2740,8 +3112,8 @@ class $AppDatabaseManager {
       $$SubtitlesTableTableManager(_db, _db.subtitles);
   $$SummariesTableTableManager get summaries =>
       $$SummariesTableTableManager(_db, _db.summaries);
+  $$ChatSessionsTableTableManager get chatSessions =>
+      $$ChatSessionsTableTableManager(_db, _db.chatSessions);
   $$ChatMessagesTableTableManager get chatMessages =>
       $$ChatMessagesTableTableManager(_db, _db.chatMessages);
-  $$VideoTagsTableTableManager get videoTags =>
-      $$VideoTagsTableTableManager(_db, _db.videoTags);
 }

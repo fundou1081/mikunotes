@@ -1,89 +1,21 @@
-import 'package:drift/drift.dart' show Value;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
-import 'package:mikunotes/core/models/chat_message.dart';
+import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
 import 'package:mikunotes/core/models/subtitle.dart';
-import 'package:mikunotes/core/models/summary.dart';
+import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart';
+import 'package:drift/drift.dart' as drift show Value;
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
-class VideoDetailScreen extends ConsumerStatefulWidget {
-  final String bvid;
-  const VideoDetailScreen({super.key, required this.bvid});
-
-  @override
-  ConsumerState<VideoDetailScreen> createState() => _VideoDetailScreenState();
-}
-
-class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen> {
-  VideoSubtitle? _subtitle;
-  bool _loadingSubtitle = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSubtitle();
-  }
-
-  Future<void> _loadSubtitle() async {
-    final repo = ref.read(videoRepositoryProvider);
-    final sub = await repo.getSubtitle(widget.bvid);
-    setState(() {
-      _subtitle = sub;
-      _loadingSubtitle = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('视频 ${widget.bvid}', maxLines: 1, overflow: TextOverflow.ellipsis),
-          bottom: const TabBar(tabs: [
-            Tab(text: '摘要', icon: Icon(Icons.summarize)),
-            Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline)),
-            Tab(text: '字幕', icon: Icon(Icons.subtitles)),
-          ]),
-        ),
-        body: TabBarView(children: [
-          _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, loading: _loadingSubtitle),
-          _ChatTab(bvid: widget.bvid, subtitle: _subtitle),
-          _SubtitleTab(bvid: widget.bvid, subtitle: _subtitle, loading: _loadingSubtitle),
-        ]),
-      ),
-    );
-  }
-}
-
-class _SummaryTab extends ConsumerStatefulWidget {
-  final String bvid;
-  final VideoSubtitle? subtitle;
-  final bool loading;
-
-  const _SummaryTab({
-    required this.bvid,
-    required this.subtitle,
-    required this.loading,
-  });
-
-  @override
-  ConsumerState<_SummaryTab> createState() => _SummaryTabState();
-}
-
-class _SummaryTabState extends ConsumerState<_SummaryTab> {
-  String? _summary;
-  bool _generating = false;
-  String? _error;
-
-  static const _defaultPrompt = """你是B站视频内容总结助手。请严格按照以下格式输出结构化总结：
+/// 默认总结 prompt
+const _defaultSummaryPrompt = """你是B站视频内容总结助手。请严格按照以下格式输出结构化总结：
 
 ## 📺 视频概述
 一句话概括视频主题。
@@ -109,44 +41,136 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 - 观点引用视频原话
 - 板块间用 --- 分隔""";
 
-  Future<void> _downloadSubtitle() async {
-    setState(() {
-      _generating = true;
-      _error = null;
-    });
-    try {
-      final repo = ref.read(videoRepositoryProvider);
-      final sub = await repo.downloadAndStoreSubtitle(widget.bvid);
-      if (!mounted) return;
-      if (sub != null) {
-        setState(() {
-          _generating = false;
-          _error = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✓ 字幕下载成功: ${sub.entries.length} 条')),
-        );
-        // 替换当前页面以刷新
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => VideoDetailScreen(bvid: widget.bvid),
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _error = '字幕下载失败: $e';
-        _generating = false;
-      });
-    }
+class VideoDetailScreen extends ConsumerStatefulWidget {
+  final String bvid;
+  const VideoDetailScreen({super.key, required this.bvid});
+
+  @override
+  ConsumerState<VideoDetailScreen> createState() => _VideoDetailScreenState();
+}
+
+class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
+    with SingleTickerProviderStateMixin {
+  VideoSubtitle? _subtitle;
+  List<Subtitle> _allSubtitles = [];
+  String? _selectedLang;
+  bool _loadingSubtitle = true;
+  int _subtitleTabKey = 0; // 用于强制重建 Subtitle Tab
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
   }
 
-  Future<void> _generateSummary({String? customPrompt}) async {
+  Future<void> _loadAll() async {
+    final repo = ref.read(videoRepositoryProvider);
+    final all = await repo.getAllSubtitles(widget.bvid);
+    VideoSubtitle? sub;
+    if (all.isNotEmpty) {
+      sub = await repo.getSubtitle(widget.bvid);
+    }
+    if (!mounted) return;
+    setState(() {
+      _allSubtitles = all;
+      _subtitle = sub;
+      _selectedLang = sub?.language ?? (all.isNotEmpty ? all.first.language : null);
+      _loadingSubtitle = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('视频 ${widget.bvid}', maxLines: 1, overflow: TextOverflow.ellipsis),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新字幕',
+              onPressed: _loadingSubtitle ? null : _refreshSubtitles,
+            ),
+          ],
+          bottom: const TabBar(tabs: [
+            Tab(text: '摘要', icon: Icon(Icons.summarize)),
+            Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline)),
+            Tab(text: '字幕', icon: Icon(Icons.subtitles)),
+          ]),
+        ),
+        body: TabBarView(children: [
+          _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll),
+          _ChatTab(bvid: widget.bvid, subtitle: _subtitle),
+          _SubtitleTab(
+            key: ValueKey(_subtitleTabKey),
+            bvid: widget.bvid,
+            allSubtitles: _allSubtitles,
+            selectedLang: _selectedLang,
+            loading: _loadingSubtitle,
+            onLanguageChanged: (lang) {
+              setState(() {
+                _selectedLang = lang;
+                _subtitleTabKey++;
+              });
+              _loadSubtitleForLang(lang);
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _loadSubtitleForLang(String lang) async {
+    final repo = ref.read(videoRepositoryProvider);
+    final sub = await repo.getSubtitle(widget.bvid, language: lang);
+    if (mounted) setState(() => _subtitle = sub);
+  }
+
+  Future<void> _refreshSubtitles() async {
+    setState(() => _loadingSubtitle = true);
+    try {
+      final repo = ref.read(videoRepositoryProvider);
+      await repo.downloadAllSubtitles(widget.bvid);
+      await _loadAll();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刷新失败: $e')),
+        );
+        setState(() => _loadingSubtitle = false);
+      }
+    }
+  }
+}
+
+// ─── 摘要 Tab ──────────────────────────────────────────────────
+
+class _SummaryTab extends ConsumerStatefulWidget {
+  final String bvid;
+  final VideoSubtitle? subtitle;
+  final VoidCallback onChanged;
+  const _SummaryTab({
+    required this.bvid,
+    required this.subtitle,
+    required this.onChanged,
+  });
+
+  @override
+  ConsumerState<_SummaryTab> createState() => _SummaryTabState();
+}
+
+class _SummaryTabState extends ConsumerState<_SummaryTab> {
+  String? _summary; // 当前正在 stream 的内容
+  bool _generating = false;
+  String? _error;
+  String? _streamingSummaryId; // 当前 stream 的总结 ID
+
+  Future<void> _generateSummary({String? customPrompt, String? title}) async {
     if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
       setState(() => _error = '请先下载字幕');
       return;
     }
-
     final apiKey = ref.read(aiConfigProvider).apiKey;
     if (apiKey.isEmpty) {
       setState(() => _error = '请先在设置中配置 AI API Key');
@@ -156,125 +180,86 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     setState(() {
       _generating = true;
       _error = null;
+      _summary = '';
     });
 
+    final summaryId = _uuid.v4();
+    _streamingSummaryId = summaryId;
+
+    final client = ref.read(llmClientProvider);
+    final config = ref.read(aiConfigProvider);
+    final prompt = customPrompt ?? config.customSystemPrompt;
+    final systemPrompt = prompt.isNotEmpty ? prompt : _defaultSummaryPrompt;
+
+    final transcript = widget.subtitle!.fullText;
+    final maxChars = config.maxContextChars;
+    final truncated = transcript.length > maxChars
+        ? '${transcript.substring(0, maxChars)}\n\n... (已截断)'
+        : transcript;
+
+    final buffer = StringBuffer();
+
     try {
-      final client = ref.read(llmClientProvider);
-      final config = ref.read(aiConfigProvider);
-      final prompt = customPrompt ?? config.customSystemPrompt;
-      final systemPrompt = prompt.isNotEmpty ? prompt : _defaultPrompt;
-
-      final transcript = widget.subtitle!.fullText;
-      final maxChars = 12000;
-      final truncated = transcript.length > maxChars
-          ? '${transcript.substring(0, maxChars)}\n\n... (已截断)'
-          : transcript;
-
-      final summary = await client.chat(
+      await for (final chunk in client.chatStream(
         systemPrompt: systemPrompt,
-        userMessage: '视频 BV号: ${widget.bvid}\n\n字幕内容:\n$truncated',
-      );
+        messages: [
+          {
+            'role': 'user',
+            'content': '视频 BV号: ${widget.bvid}\n\n字幕内容:\n$truncated',
+          },
+        ],
+      )) {
+        if (_streamingSummaryId != summaryId) return; // 用户切换了
+        buffer.write(chunk);
+        setState(() => _summary = buffer.toString());
+      }
 
       // 保存到数据库
-      final db = ref.read(databaseProvider);
-      await db.saveSummary(SummariesCompanion(
-        id: Value(_uuid.v4()),
-        bvid: Value(widget.bvid),
-        type: const Value('structured'),
-        content: Value(summary),
-        modelUsed: Value(config.effectiveModel),
-        promptUsed: Value(systemPrompt),
-        createdAt: Value(DateTime.now()),
-      ));
+      final repo = ref.read(videoRepositoryProvider);
+      await repo.createSummary(
+        bvid: widget.bvid,
+        content: buffer.toString(),
+        type: summary_model.SummaryType.structured,
+        title: title,
+        modelUsed: config.effectiveModel,
+        promptUsed: systemPrompt,
+      );
 
-      setState(() {
-        _summary = summary;
-        _generating = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✓ 总结已保存')),
+        );
+        widget.onChanged();
+      }
     } catch (e) {
-      setState(() {
-        _error = '$e';
-        _generating = false;
-      });
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generating = false;
+          _streamingSummaryId = null;
+        });
+      }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (widget.loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_summary != null) {
-      return Markdown(
-        data: _summary!,
-        padding: const EdgeInsets.all(16),
-        selectable: true,
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_error != null)
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(_error!,
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer)),
-              ),
-            ),
-          const Spacer(),
-          // 字幕缺失时显示下载按钮
-          if (_error == '请先下载字幕')
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: OutlinedButton.icon(
-                onPressed: _generating ? null : _downloadSubtitle,
-                icon: _generating
-                    ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.download),
-                label: Text(_generating ? '下载中...' : '下载字幕'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  minimumSize: const Size(double.infinity, 0),
-                ),
-              ),
-            ),
-          if (_generating)
-            const Center(child: CircularProgressIndicator())
-          else
-            Column(
-              children: [
-                FilledButton.icon(
-                  onPressed: _generateSummary,
-                  icon: const Icon(Icons.auto_awesome),
-                  label: const Text('生成 AI 总结', style: TextStyle(fontSize: 16)),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size(double.infinity, 0),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => _showTopicExpansionDialog(),
-                  icon: const Icon(Icons.open_in_full),
-                  label: const Text('主题展开'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size(double.infinity, 0),
-                  ),
-                ),
-              ],
-            ),
-          const Spacer(),
-        ],
+  void _showExistingSummaries() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _SummariesListSheet(
+        bvid: widget.bvid,
+        onSelect: (s) {
+          Navigator.pop(ctx);
+          setState(() {
+            _summary = s.content;
+            _error = null;
+          });
+        },
+        onDelete: (s) async {
+          await ref.read(videoRepositoryProvider).deleteSummary(s.id);
+          widget.onChanged();
+        },
       ),
     );
   }
@@ -282,6 +267,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
   void _showTopicExpansionDialog() {
     final topicController = TextEditingController();
     final promptController = TextEditingController();
+    final titleController = TextEditingController();
 
     showDialog(
       context: context,
@@ -291,6 +277,15 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: '标题 (可选)',
+                  hintText: '留空自动从内容提取',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: topicController,
                 decoration: const InputDecoration(
@@ -313,18 +308,21 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
           ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               final topic = topicController.text.trim();
               final userPrompt = promptController.text.trim();
               final fullPrompt = userPrompt.isEmpty
-                  ? '针对视频主题 "$topic" 进行深入分析。\n\n$_defaultPrompt'
+                  ? '针对视频主题 "$topic" 进行深入分析。\n\n$_defaultSummaryPrompt'
                   : userPrompt;
-              _generateSummary(customPrompt: fullPrompt);
+              _generateSummary(
+                customPrompt: fullPrompt,
+                title: titleController.text.trim().isEmpty
+                    ? topic
+                    : titleController.text.trim(),
+              );
             },
             child: const Text('生成'),
           ),
@@ -332,7 +330,244 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.subtitle == null) {
+      return _noSubtitleState();
+    }
+
+    // 流式输出或已选中的总结
+    if (_summary != null || _generating) {
+      return _streamingView();
+    }
+
+    return _emptyState();
+  }
+
+  Widget _streamingView() {
+    return Column(
+      children: [
+        if (_generating)
+          LinearProgressIndicator(
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            valueColor: AlwaysStoppedAnimation(
+              Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (_error != null)
+                Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_error!),
+                  ),
+                ),
+              if (_summary != null || _generating)
+                Markdown(
+                  data: _summary ?? '',
+                  selectable: true,
+                ),
+            ],
+          ),
+        ),
+        if (_generating)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: FilledButton.tonalIcon(
+              onPressed: () {
+                _streamingSummaryId = null; // 取消 stream
+                setState(() => _generating = false);
+              },
+              icon: const Icon(Icons.stop),
+              label: const Text('停止生成'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _emptyState() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(_error!),
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _generateSummary,
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('生成 AI 总结'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _showExistingSummaries,
+                icon: const Icon(Icons.history),
+                tooltip: '历史总结',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _showTopicExpansionDialog,
+            icon: const Icon(Icons.open_in_full),
+            label: const Text('主题展开'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noSubtitleState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.subtitles_off, size: 64),
+            const SizedBox(height: 16),
+            const Text('请先下载字幕'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () async {
+                setState(() => _generating = true);
+                try {
+                  final repo = ref.read(videoRepositoryProvider);
+                  await repo.downloadAllSubtitles(widget.bvid);
+                  widget.onChanged();
+                } catch (e) {
+                  setState(() => _error = '$e');
+                } finally {
+                  if (mounted) setState(() => _generating = false);
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('下载字幕'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+class _SummariesListSheet extends ConsumerWidget {
+  final String bvid;
+  final Function(summary_model.Summary) onSelect;
+  final Function(summary_model.Summary) onDelete;
+  const _SummariesListSheet({
+    required this.bvid,
+    required this.onSelect,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (ctx, scrollController) {
+        return FutureBuilder<List<summary_model.Summary>>(
+          future: ref.read(videoRepositoryProvider).getAllSummaries(bvid),
+          builder: (ctx, snap) {
+            final items = snap.data ?? [];
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history),
+                      const SizedBox(width: 8),
+                      const Text('历史总结',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Text('共 ${items.length} 条',
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                if (snap.connectionState == ConnectionState.waiting)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: Text('暂无历史总结')),
+                  )
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final s = items[i];
+                        return ListTile(
+                          title: Text(
+                            s.title.isEmpty ? '总结 ${i + 1}' : s.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${_typeLabel(s.type)} · ${_formatDate(s.createdAt)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          onTap: () => onSelect(s),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => onDelete(s),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _typeLabel(summary_model.SummaryType t) {
+    switch (t) {
+      case summary_model.SummaryType.structured:
+        return '结构化';
+      case summary_model.SummaryType.topicExpansion:
+        return '主题展开';
+      case summary_model.SummaryType.compare:
+        return '对比';
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+// ─── 对话 Tab ──────────────────────────────────────────────────
 
 class _ChatTab extends ConsumerStatefulWidget {
   final String bvid;
@@ -346,19 +581,108 @@ class _ChatTab extends ConsumerStatefulWidget {
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  List<ChatMessageModel> _messages = [];
-  bool _sending = false;
+
+  ChatSession? _currentSession;
+  List<ChatMessage> _messages = [];
+  String _streamingContent = '';
+  bool _streaming = false;
+  int _messageIndex = 0;
+  int _tokensUsed = 0;
+  bool _loading = true;
 
   @override
-  void dispose() {
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _initSession();
+  }
+
+  Future<void> _initSession() async {
+    final repo = ref.read(videoRepositoryProvider);
+    final sessions = await repo.getChatSessions(widget.bvid);
+    if (!mounted) return;
+    if (sessions.isEmpty) {
+      // 创建默认会话
+      final s = await repo.createChatSession(widget.bvid);
+      if (mounted) setState(() {
+        _currentSession = s;
+        _loading = false;
+      });
+    } else {
+      _switchToSession(sessions.first);
+    }
+  }
+
+  Future<void> _switchToSession(ChatSession s) async {
+    final repo = ref.read(videoRepositoryProvider);
+    final msgs = await repo.getChatMessages(s.id);
+    final totalChars = msgs.fold(0, (sum, m) => sum + m.content.length);
+    if (!mounted) return;
+    setState(() {
+      _currentSession = s;
+      _messages = msgs;
+      _streamingContent = '';
+      _streaming = false;
+      _messageIndex = msgs.length;
+      _tokensUsed = LLMClient.estimateTokens(
+        '${widget.subtitle?.fullText ?? ''}$totalChars',
+      );
+      _loading = false;
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _newSession() async {
+    final repo = ref.read(videoRepositoryProvider);
+    final s = await repo.createChatSession(widget.bvid);
+    _switchToSession(s);
+  }
+
+  void _showSessionList() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _SessionListSheet(
+        bvid: widget.bvid,
+        currentId: _currentSession?.id,
+        onSelect: (s) {
+          Navigator.pop(ctx);
+          _switchToSession(s);
+        },
+        onDelete: (s) async {
+          await ref.read(videoRepositoryProvider).deleteChatSession(s.id);
+        },
+        onRename: (s) async {
+          final newTitle = await _showRenameDialog(ctx, s.title);
+          if (newTitle != null && newTitle.isNotEmpty) {
+            await ref.read(videoRepositoryProvider)
+                .updateSessionTitle(s.id, newTitle);
+          }
+        },
+      ),
+    );
+  }
+
+  Future<String?> _showRenameDialog(BuildContext context, String current) async {
+    final controller = TextEditingController(text: current);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名会话'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _streaming) return;
     if (widget.subtitle == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先下载字幕')),
@@ -372,70 +696,96 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       return;
     }
 
-    final db = ref.read(databaseProvider);
-    final userMsg = ChatMessageModel(
+    final repo = ref.read(videoRepositoryProvider);
+    if (_currentSession == null) {
+      final s = await repo.createChatSession(widget.bvid);
+      _currentSession = s;
+    }
+    final session = _currentSession!;
+
+    // 上下文压缩
+    final config = ref.read(aiConfigProvider);
+    final compressed = await repo.compressContextIfNeeded(
+      session.id,
+      llmClient: ref.read(llmClientProvider),
+      config: config,
+    );
+    if (compressed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已自动压缩早期对话历史'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    // 保存用户消息
+    await repo.addChatMessage(
+      sessionId: session.id,
+      role: chat_model.ChatRole.user,
+      content: text,
+    );
+
+    final newUserMsg = ChatMessage(
       id: _uuid.v4(),
-      videoId: widget.bvid,
-      role: ChatRole.user,
+      sessionId: session.id,
+      role: 'user',
       content: text,
       timestamp: DateTime.now(),
+      isCompressed: false,
     );
 
     setState(() {
-      _messages = [..._messages, userMsg];
-      _sending = true;
+      _messages = [..._messages, newUserMsg];
+      _streaming = true;
+      _streamingContent = '';
     });
+    _messageIndex = _messages.length;
     _controller.clear();
-    await db.saveChatMessage(ChatMessagesCompanion(
-      id: Value(userMsg.id),
-      bvid: Value(userMsg.videoId),
-      role: Value(userMsg.role.name),
-      content: Value(userMsg.content),
-      timestamp: Value(userMsg.timestamp),
-    ));
+    _scrollToBottom();
+
+    // 构造上下文
+    final messages = await repo.buildChatMessages(
+      session.id,
+      transcript: widget.subtitle!.fullText,
+    );
+    // 移除 messages[0] (system prompt)，用 chatStream 的 systemPrompt 参数
+    final history = messages.skip(1).toList();
 
     try {
       final client = ref.read(llmClientProvider);
-      final context = widget.subtitle!.fullText.length > 8000
-          ? '${widget.subtitle!.fullText.substring(0, 8000)}\n\n... (已截断)'
-          : widget.subtitle!.fullText;
-
-      final history = _messages
-          .map((m) => {
-                'role': m.role == ChatRole.user ? 'user' : 'assistant',
-                'content': m.content,
-              })
-          .toList();
-
-      final reply = await client.chatMultiTurn(
-        systemPrompt:
-            '你是视频内容问答助手。基于以下字幕内容回答用户问题。如果问题超出字幕范围，明确告知用户。\n\n字幕内容:\n$context',
+      final buffer = StringBuffer();
+      await for (final chunk in client.chatStream(
+        systemPrompt: messages.first['content']!,
         messages: history,
+      )) {
+        buffer.write(chunk);
+        setState(() => _streamingContent = buffer.toString());
+        _scrollToBottom();
+      }
+
+      // 保存助手消息
+      await repo.addChatMessage(
+        sessionId: session.id,
+        role: chat_model.ChatRole.assistant,
+        content: buffer.toString(),
       );
 
-      final assistantMsg = ChatMessageModel(
-        id: _uuid.v4(),
-        videoId: widget.bvid,
-        role: ChatRole.assistant,
-        content: reply,
-        timestamp: DateTime.now(),
-      );
-
-      await db.saveChatMessage(ChatMessagesCompanion(
-        id: Value(assistantMsg.id),
-        bvid: Value(assistantMsg.videoId),
-        role: Value(assistantMsg.role.name),
-        content: Value(assistantMsg.content),
-        timestamp: Value(assistantMsg.timestamp),
-      ));
-
-      setState(() {
-        _messages = [..._messages, assistantMsg];
-        _sending = false;
-      });
-      _scrollToBottom();
+      // 重新加载消息列表
+      final msgs = await repo.getChatMessages(session.id);
+      if (mounted) {
+        setState(() {
+          _messages = msgs;
+          _streamingContent = '';
+          _streaming = false;
+        });
+        _scrollToBottom();
+      }
     } catch (e) {
-      setState(() => _sending = false);
+      setState(() {
+        _streaming = false;
+        _streamingContent = '';
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('错误: $e')),
@@ -449,7 +799,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
       }
@@ -458,23 +808,45 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (widget.subtitle == null) {
+      return const Center(child: Text('请先下载字幕'));
+    }
+
     return Column(
       children: [
-        Expanded(
-          child: _messages.isEmpty
-              ? const Center(child: Text('开始对话吧'))
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, idx) {
-                    final m = _messages[idx];
-                    return _ChatBubble(message: m);
-                  },
-                ),
+        _SessionBar(
+          title: _currentSession?.title ?? '新对话',
+          messageCount: _messages.length,
+          tokensUsed: _tokensUsed,
+          maxTokens: ref.read(aiConfigProvider).maxContextChars ~/ 2,
+          onTap: _showSessionList,
+          onNew: _newSession,
         ),
-        if (_sending)
-          const LinearProgressIndicator(),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            itemCount: _messages.length + (_streaming ? 1 : 0),
+            itemBuilder: (ctx, i) {
+              if (i == _messages.length && _streaming) {
+                return _ChatBubble(
+                  content: _streamingContent,
+                  isUser: false,
+                  isStreaming: true,
+                );
+              }
+              final m = _messages[i];
+              return _ChatBubble(
+                content: m.content,
+                isUser: m.role == 'user',
+                isStreaming: false,
+              );
+            },
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.all(8),
           child: Row(
@@ -490,7 +862,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                 ),
               ),
               IconButton(
-                onPressed: _sending ? null : _send,
+                onPressed: _streaming ? null : _send,
                 icon: const Icon(Icons.send),
               ),
             ],
@@ -501,20 +873,185 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   }
 }
 
-class _ChatBubble extends StatelessWidget {
-  final ChatMessageModel message;
-  const _ChatBubble({required this.message});
+class _SessionBar extends StatelessWidget {
+  final String title;
+  final int messageCount;
+  final int tokensUsed;
+  final int maxTokens;
+  final VoidCallback onTap;
+  final VoidCallback onNew;
+
+  const _SessionBar({
+    required this.title,
+    required this.messageCount,
+    required this.tokensUsed,
+    required this.maxTokens,
+    required this.onTap,
+    required this.onNew,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isUser = message.role == ChatRole.user;
+    final usage = maxTokens > 0 ? (tokensUsed / maxTokens).clamp(0.0, 1.0) : 0.0;
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: onTap,
+                child: Row(
+                  children: [
+                    const Icon(Icons.chat_bubble, size: 16),
+                    const SizedBox(width: 4),
+                    Text(title,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.expand_more, size: 16),
+                  ],
+                ),
+              ),
+            ),
+            Text('~$tokensUsed tokens',
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 60,
+              child: LinearProgressIndicator(
+                value: usage,
+                backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add, size: 20),
+              tooltip: '新对话',
+              onPressed: onNew,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionListSheet extends ConsumerWidget {
+  final String bvid;
+  final String? currentId;
+  final Function(ChatSession) onSelect;
+  final Function(ChatSession) onDelete;
+  final Function(ChatSession) onRename;
+  const _SessionListSheet({
+    required this.bvid,
+    required this.currentId,
+    required this.onSelect,
+    required this.onDelete,
+    required this.onRename,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (ctx, scrollController) {
+        return FutureBuilder<List<ChatSession>>(
+          future: ref.read(videoRepositoryProvider).getChatSessions(bvid),
+          builder: (ctx, snap) {
+            final items = snap.data ?? [];
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.chat),
+                      const SizedBox(width: 8),
+                      const Text('对话会话',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Text('共 ${items.length} 条',
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: Text('暂无对话会话')),
+                  )
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final s = items[i];
+                        final isCurrent = s.id == currentId;
+                        return ListTile(
+                          leading: Icon(
+                            isCurrent
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                          ),
+                          title: Text(s.title),
+                          subtitle: Text(_formatDate(s.lastActiveAt),
+                              style: Theme.of(context).textTheme.bodySmall),
+                          onTap: () => onSelect(s),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18),
+                                onPressed: () => onRename(s),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18),
+                                onPressed: () => onDelete(s),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _ChatBubble extends StatelessWidget {
+  final String content;
+  final bool isUser;
+  final bool isStreaming;
+  const _ChatBubble({
+    required this.content,
+    required this.isUser,
+    required this.isStreaming,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.all(12),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         decoration: BoxDecoration(
           color: isUser
@@ -522,126 +1059,224 @@ class _ChatBubble extends StatelessWidget {
               : Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: MarkdownBody(
-          data: message.content,
-          selectable: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MarkdownBody(
+              data: content.isEmpty ? (isStreaming ? '...' : ' ') : content,
+              selectable: !isStreaming,
+            ),
+            if (isStreaming)
+              const SizedBox(
+                height: 3,
+                child: LinearProgressIndicator(),
+              ),
+          ],
         ),
       ),
     );
   }
 }
 
+// ─── 字幕 Tab ──────────────────────────────────────────────────
+
 class _SubtitleTab extends ConsumerStatefulWidget {
   final String bvid;
-  final VideoSubtitle? subtitle;
+  final List<Subtitle> allSubtitles;
+  final String? selectedLang;
   final bool loading;
-  const _SubtitleTab({required this.bvid, required this.subtitle, required this.loading});
+  final ValueChanged<String> onLanguageChanged;
+  const _SubtitleTab({
+    super.key,
+    required this.bvid,
+    required this.allSubtitles,
+    required this.selectedLang,
+    required this.loading,
+    required this.onLanguageChanged,
+  });
 
   @override
   ConsumerState<_SubtitleTab> createState() => _SubtitleTabState();
 }
 
 class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
-  bool _retrying = false;
-  String? _error;
+  VideoSubtitle? _subtitle;
+  bool _loading = true;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
-  Future<void> _retry() async {
-    setState(() {
-      _retrying = true;
-      _error = null;
-    });
-    try {
-      final repo = ref.read(videoRepositoryProvider);
-      final sub = await repo.downloadAndStoreSubtitle(widget.bvid);
-      if (mounted && sub != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✓ 字幕下载成功: ${sub.entries.length} 条')),
-        );
-        // 重新进入该视频详情页，触发父组件 _loadSubtitle
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => VideoDetailScreen(bvid: widget.bvid),
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _error = '$e';
-      });
-    } finally {
-      if (mounted) setState(() => _retrying = false);
+  @override
+  void initState() {
+    super.initState();
+    _loading = true;
+    _loadSubtitle();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SubtitleTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedLang != widget.selectedLang) {
+      _loadSubtitle();
     }
+  }
+
+  Future<void> _loadSubtitle() async {
+    setState(() => _loading = true);
+    final repo = ref.read(videoRepositoryProvider);
+    final sub = await repo.getSubtitle(
+      widget.bvid,
+      language: widget.selectedLang,
+    );
+    if (mounted) setState(() {
+      _subtitle = sub;
+      _loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.loading) {
+    if (widget.loading || _loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+    if (widget.allSubtitles.isEmpty) {
+      return const Center(child: Text('暂无字幕'));
+    }
+
+    final filteredEntries = _subtitle?.entries.where((e) {
+      if (_searchQuery.isEmpty) return true;
+      return e.content.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList() ?? [];
+
+    return Column(
+      children: [
+        // 语言选择 + 统计
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.subtitles_off, size: 64, color: Theme.of(context).colorScheme.outline),
-              const SizedBox(height: 16),
-              const Text('暂无字幕'),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(6),
+              Row(
+                children: [
+                  const Icon(Icons.translate, size: 16),
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    value: widget.selectedLang,
+                    isDense: true,
+                    items: widget.allSubtitles
+                        .map((s) => DropdownMenuItem(
+                              value: s.language,
+                              child: Text(s.language),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) widget.onLanguageChanged(v);
+                    },
                   ),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      fontSize: 12,
+                  const Spacer(),
+                  if (_subtitle != null)
+                    Text(
+                      '${_subtitle!.entries.length} 条 · ${_subtitle!.fullText.length} 字 · ~${LLMClient.estimateTokens(_subtitle!.fullText)} tokens',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    textAlign: TextAlign.center,
-                  ),
+                ],
+              ),
+              if (widget.allSubtitles.length > 1) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '共 ${widget.allSubtitles.length} 种语言',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _retrying ? null : _retry,
-                icon: _retrying
-                    ? const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh),
-                label: Text(_retrying ? '下载中...' : '重试下载字幕'),
-              ),
             ],
           ),
         ),
-      );
-    }
-    final subtitle = widget.subtitle!;
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: subtitle.entries.length,
-      separatorBuilder: (_, __) => const Divider(height: 24),
-      itemBuilder: (context, idx) {
-        final e = subtitle.entries[idx];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${e.from.toStringAsFixed(1)}s - ${e.to.toStringAsFixed(1)}s',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+        // 搜索框
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: '搜索字幕...',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              isDense: true,
+              border: const OutlineInputBorder(),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
             ),
-            const SizedBox(height: 4),
-            Text(e.content),
-          ],
-        );
-      },
+            onChanged: (v) => setState(() => _searchQuery = v),
+          ),
+        ),
+        // 字幕列表
+        Expanded(
+          child: _subtitle == null || filteredEntries.isEmpty
+              ? Center(child: Text(_searchQuery.isEmpty ? '暂无字幕' : '无匹配结果'))
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: filteredEntries.length,
+                  separatorBuilder: (_, __) => const Divider(height: 16),
+                  itemBuilder: (ctx, i) {
+                    final e = filteredEntries[i];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${e.from.toStringAsFixed(1)}s - ${e.to.toStringAsFixed(1)}s',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        _highlightSearch(e.content),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _highlightSearch(String text) {
+    if (_searchQuery.isEmpty) return Text(text);
+    final lower = text.toLowerCase();
+    final query = _searchQuery.toLowerCase();
+    final idx = lower.indexOf(query);
+    if (idx == -1) return Text(text);
+
+    return RichText(
+      text: TextSpan(
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+        children: [
+          TextSpan(text: text.substring(0, idx)),
+          TextSpan(
+            text: text.substring(idx, idx + _searchQuery.length),
+            style: TextStyle(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(text: text.substring(idx + _searchQuery.length)),
+        ],
+      ),
     );
   }
 }

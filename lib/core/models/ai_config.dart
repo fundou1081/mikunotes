@@ -21,6 +21,8 @@ class AIConfig {
   final double temperature;
   final int maxTokens;
   final String customSystemPrompt;
+  final int maxContextChars; // 上下文最大字符数 (超出会自动压缩)
+  final int compressTargetChars; // 压缩后目标字符数
 
   const AIConfig({
     this.provider = LLMProvider.deepseek,
@@ -30,6 +32,8 @@ class AIConfig {
     this.temperature = 0.3,
     this.maxTokens = 4096,
     this.customSystemPrompt = '',
+    this.maxContextChars = 32000, // 约 16K tokens (粗估)
+    this.compressTargetChars = 8000, // 压缩后保留 ~4K tokens
   });
 
   String get effectiveBaseUrl => baseUrl.isNotEmpty ? baseUrl : provider.defaultBaseUrl;
@@ -44,6 +48,8 @@ class AIConfig {
     double? temperature,
     int? maxTokens,
     String? customSystemPrompt,
+    int? maxContextChars,
+    int? compressTargetChars,
   }) =>
       AIConfig(
         provider: provider ?? this.provider,
@@ -53,5 +59,7 @@ class AIConfig {
         temperature: temperature ?? this.temperature,
         maxTokens: maxTokens ?? this.maxTokens,
         customSystemPrompt: customSystemPrompt ?? this.customSystemPrompt,
+        maxContextChars: maxContextChars ?? this.maxContextChars,
+        compressTargetChars: compressTargetChars ?? this.compressTargetChars,
       );
 }
