@@ -9,6 +9,7 @@ import 'package:mikunotes/core/storage/backup_service.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
 import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
+import 'package:dio/dio.dart';
 
 /// 首页 — 视频库 + 导入入口 + 设置
 class HomeScreen extends ConsumerWidget {
@@ -306,6 +307,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _apiKeyController;
   late TextEditingController _modelController;
   late TextEditingController _customPromptController;
+  bool _fetchingModels = false;
 
   @override
   void initState() {
@@ -315,6 +317,118 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _apiKeyController = TextEditingController(text: config.apiKey);
     _modelController = TextEditingController(text: config.effectiveModel);
     _customPromptController = TextEditingController(text: config.customSystemPrompt);
+  }
+
+  /// 从当前 endpoint 拉取可用模型列表
+  Future<void> _fetchModels() async {
+    final baseUrl = _baseUrlController.text.trim();
+    final apiKey = _apiKeyController.text.trim();
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写 Base URL')),
+      );
+      return;
+    }
+    if (apiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写 API Key')),
+      );
+      return;
+    }
+    setState(() => _fetchingModels = true);
+    try {
+      final dio = Dio(BaseOptions(
+        baseUrl: baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+        },
+      ));
+      final response = await dio.get('/models');
+      final data = response.data;
+      final models = <String>[];
+      if (data is Map && data['data'] is List) {
+        for (final m in data['data']) {
+          if (m is Map && m['id'] is String) {
+            models.add(m['id'] as String);
+          }
+        }
+      }
+      if (models.isEmpty) {
+        throw Exception('响应中没有找到模型列表');
+      }
+      models.sort();
+      if (!mounted) return;
+      await _showModelPicker(models);
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('拉取失败: ${e.response?.statusCode ?? ""} ${e.message ?? ""}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('拉取失败: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _fetchingModels = false);
+    }
+  }
+
+  /// 模型选择器
+  Future<void> _showModelPicker(List<String> models) async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.list),
+                      const SizedBox(width: 8),
+                      Text('可用模型 (${models.length})',
+                          style: Theme.of(ctx).textTheme.titleMedium),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: models.length,
+                    itemBuilder: (ctx, i) {
+                      final m = models[i];
+                      final isCurrent = m == _modelController.text.trim();
+                      return ListTile(
+                        leading: isCurrent
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : const Icon(Icons.circle_outlined),
+                        title: Text(m),
+                        subtitle: isCurrent ? const Text('当前选择') : null,
+                        onTap: () => Navigator.pop(ctx, m),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      setState(() => _modelController.text = selected);
+    }
   }
 
   @override
@@ -630,12 +744,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             obscureText: true,
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _modelController,
-            decoration: const InputDecoration(
-              labelText: '模型名称',
-              border: OutlineInputBorder(),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _modelController,
+                  decoration: const InputDecoration(
+                    labelText: '模型名称',
+                    border: OutlineInputBorder(),
+                    helperText: '点右侧按钮可拉取可用模型',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 56,
+                child: FilledButton.tonalIcon(
+                  onPressed: _fetchingModels ? null : _fetchModels,
+                  icon: _fetchingModels
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: const Text('拉取'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
