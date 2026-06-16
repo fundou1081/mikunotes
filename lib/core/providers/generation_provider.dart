@@ -47,10 +47,16 @@ class GenerationState {
 /// 全局生成管理器 — 不绑定 widget 生命周期
 class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
   final Ref _ref;
+  final Map<String, bool> _cancelFlags = {};
 
   GenerationNotifier(this._ref) : super({});
 
   GenerationState? getState(String bvid) => state[bvid];
+
+  /// 取消某个视频的生成
+  void cancel(String bvid) {
+    _cancelFlags[bvid] = true;
+  }
 
   /// 启动后台总结生成
   Future<void> startSummaryGeneration({
@@ -116,12 +122,28 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       }
       final systemPrompt = llm_tpl.PromptTemplate.render(tpl, templateVars);
 
+      _cancelFlags[bvid] = false;
       final buffer = StringBuffer();
       await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: [{'role': 'user', 'content': '请开始总结'}],
         disableReasoning: disableReasoning,
       )) {
+        // 检查取消标志
+        if (_cancelFlags[bvid] == true) {
+          _cancelFlags[bvid] = false;
+          final prev = state[bvid];
+          state = {
+            ...state,
+            bvid: GenerationState(
+              isRunning: false,
+              isCompleted: false,
+              content: buffer.toString(),
+              summaryId: prev?.summaryId,
+            ),
+          };
+          return;
+        }
         buffer.write(chunk);
         state = {
           ...state,

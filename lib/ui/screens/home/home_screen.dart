@@ -346,28 +346,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         headers: {
           'Authorization': 'Bearer $apiKey',
         },
+        validateStatus: (s) => s != null && s < 500,
       ));
-      final response = await dio.get('/models');
-      final data = response.data;
-      final models = <String>[];
-      if (data is Map && data['data'] is List) {
-        for (final m in data['data']) {
-          if (m is Map && m['id'] is String) {
-            models.add(m['id'] as String);
+
+      // 尝试多个常见路径
+      const paths = ['/models', '/v1/models', '/api/v1/models'];
+      List<String> models = [];
+      String? lastError;
+      for (final path in paths) {
+        try {
+          final response = await dio.get(path);
+          if (response.statusCode == 200 && response.data is Map) {
+            final data = response.data;
+            if (data['data'] is List) {
+              for (final m in data['data']) {
+                if (m is Map && m['id'] is String) {
+                  models.add(m['id'] as String);
+                }
+              }
+              if (models.isNotEmpty) break;
+            }
+          } else if (response.statusCode != 404) {
+            // 401/403/etc 是认证问题，不是路径问题
+            lastError = 'HTTP ${response.statusCode}';
+            if (response.statusCode == 401 || response.statusCode == 403) {
+              break; // 别试其他路径
+            }
           }
+        } on DioException catch (e) {
+          lastError = e.response?.statusCode?.toString() ?? e.message;
+          if (e.response?.statusCode == 401 || e.response?.statusCode == 403) break;
         }
       }
       if (models.isEmpty) {
-        throw Exception('响应中没有找到模型列表');
+        throw Exception(lastError ?? '未找到模型列表 (检查 baseUrl 是否正确)');
       }
       models.sort();
       if (!mounted) return;
       await _showModelPicker(models);
     } on DioException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('拉取失败: ${e.response?.statusCode ?? ""} ${e.message ?? ""}')),
-      );
+      final code = e.response?.statusCode;
+      String msg;
+      if (code == 401) {
+        msg = '拉取失败 401: API Key 无效或格式错误';
+      } else if (code == 403) {
+        msg = '拉取失败 403: 权限不足或 Key 被拒绝';
+      } else if (code == 404) {
+        msg = '拉取失败 404: 路径不存在，请检查 Base URL';
+      } else {
+        msg = '拉取失败 ${code ?? ""}: ${e.message ?? ""}';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -987,35 +1017,38 @@ class _TemplateList extends ConsumerWidget {
       builder: (ctx) {
         return AlertDialog(
           title: Text(isNew ? '新建模板' : '编辑模板 ${t.isBuiltIn ? "(内置)" : ""}'),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '名称',
-                    border: OutlineInputBorder(),
+          // 用 SingleChildScrollView 包裹防止溢出
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '名称',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: contentCtrl,
-                  maxLines: 12,
-                  minLines: 8,
-                  decoration: const InputDecoration(
-                    labelText: '模板内容 (可用变量见下方)',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: contentCtrl,
+                    maxLines: 12,
+                    minLines: 8,
+                    decoration: const InputDecoration(
+                      labelText: '模板内容 (可用变量见下方)',
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 4,
-                  children: llm_tpl.PromptTemplate.availableVariables.entries.map((e) {
-                    return ActionChip(
-                      label: Text('{{${e.key}}}'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: llm_tpl.PromptTemplate.availableVariables.entries.map((e) {
+                      return ActionChip(
+                        label: Text('{{${e.key}}}'),
                       onPressed: () {
                         final pos = contentCtrl.selection.baseOffset;
                         final text = contentCtrl.text;
@@ -1030,6 +1063,7 @@ class _TemplateList extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),

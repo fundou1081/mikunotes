@@ -275,73 +275,6 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     );
   }
 
-  void _showTopicExpansionDialog() {
-    final topicController = TextEditingController();
-    final promptController = TextEditingController();
-    final titleController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('主题展开'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: '标题 (可选)',
-                  hintText: '留空自动从内容提取',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: topicController,
-                decoration: const InputDecoration(
-                  labelText: '主题/角度',
-                  hintText: '例如: 这个视频的核心方法论',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: promptController,
-                decoration: const InputDecoration(
-                  labelText: '自定义 Prompt (可选)',
-                  hintText: '留空使用默认',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 4,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              final topic = topicController.text.trim();
-              final userPrompt = promptController.text.trim();
-              final fullPrompt = userPrompt.isEmpty
-                  ? '针对视频主题 "$topic" 进行深入分析。\n\n$_defaultSummaryPrompt'
-                  : userPrompt;
-              _generateSummary(
-                customPrompt: fullPrompt,
-                title: titleController.text.trim().isEmpty
-                    ? topic
-                    : titleController.text.trim(),
-              );
-            },
-            child: const Text('生成'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.subtitle == null) return _noSubtitleState();
@@ -402,7 +335,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: FilledButton.tonalIcon(
-                  onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
+                  onPressed: () => ref.read(generationProvider.notifier).cancel(widget.bvid),
                   icon: const Icon(Icons.stop),
                   label: const Text('停止生成'),
                 ),
@@ -478,11 +411,6 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: const Text('重新生成'),
                 ),
-                OutlinedButton.icon(
-                  onPressed: _showTopicExpansionDialog,
-                  icon: const Icon(Icons.open_in_full, size: 18),
-                  label: const Text('展开'),
-                ),
               ],
             ),
           ),
@@ -516,15 +444,6 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               tooltip: '历史总结',
             ),
           ]),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _showTopicExpansionDialog,
-            icon: const Icon(Icons.open_in_full),
-            label: const Text('主题展开'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-          ),
           const Spacer(),
         ],
       ),

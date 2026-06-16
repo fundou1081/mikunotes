@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Miku 主题色: cyan 主调 + pink 点缀
-  static const _seedColor = Color(0xFF39C5BB); // Miku cyan
+  // 蓝白主题
+  static const _seedColor = Color(0xFF1976D2); // Material Blue 700
 
   static ColorScheme _scheme(Brightness b) =>
       ColorScheme.fromSeed(seedColor: _seedColor, brightness: b);
@@ -12,7 +12,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: cs.copyWith(
-        secondary: const Color(0xFFFF8FB1), // Miku pink
+        
       ),
       brightness: Brightness.light,
       appBarTheme: AppBarTheme(
@@ -49,7 +49,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: cs.copyWith(
-        secondary: const Color(0xFFFF8FB1), // Miku pink
+        
       ),
       brightness: Brightness.dark,
       appBarTheme: AppBarTheme(
