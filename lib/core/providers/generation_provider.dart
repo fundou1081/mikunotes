@@ -82,8 +82,8 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       final client = _ref.read(llmClientProvider);
 
       // MiniMax 系模型默认开推理，需要主动关闭才不返回 reasoning_content
-      final disableReasoning = config.provider == LLMProvider.minimax ||
-          config.provider == LLMProvider.minimaxFree;
+      final disableReasoning = config.provider == LLMProvider.minimax;
+          
 
       final transcript = subtitle.fullText;
       final truncated = transcript.length > config.maxContextChars
