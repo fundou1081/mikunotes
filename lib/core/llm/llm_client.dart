@@ -59,6 +59,7 @@ class LLMClient {
   }
 
   /// 流式聊天 — 返回内容块的 Stream
+  /// 智能检测: 如果响应不是 SSE 格式, 自动 fallback 到普通 chat
   Stream<String> chatStream({
     required String systemPrompt,
     required List<Map<String, String>> messages,
@@ -68,6 +69,9 @@ class LLMClient {
       ...messages,
     ];
 
+    final headers = <String, String>{
+      'Accept': 'text/event-stream',
+    };
     final response = await _dio.post(
       '/chat/completions',
       data: {
@@ -80,11 +84,14 @@ class LLMClient {
       options: Options(
         responseType: ResponseType.stream,
         receiveTimeout: const Duration(minutes: 5),
+        headers: headers,
       ),
     );
 
     final stream = response.data.stream as Stream<dynamic>;
     String buffer = '';
+    bool sseFormatDetected = false;
+    int sseLineCount = 0;
 
     await for (final chunk in stream) {
       final str = utf8.decode(chunk as List<int>, allowMalformed: true);
@@ -97,12 +104,22 @@ class LLMClient {
         final line = buffer.substring(0, newlineIdx).trim();
         buffer = buffer.substring(newlineIdx + 1);
 
-        if (line.isEmpty || !line.startsWith('data:')) continue;
+        if (line.isEmpty) continue;
+        if (!line.startsWith('data:')) {
+          // 不是 SSE 格式 (可能是普通 JSON 一次性返回)
+          // 等 stream 结束后再处理
+          break;
+        }
+        sseLineCount++;
         final data = line.substring(5).trim();
-        if (data == '[DONE]') return;
+        if (data == '[DONE]') {
+          sseFormatDetected = true;
+          return;
+        }
 
         try {
           final json = jsonDecode(data) as Map<String, dynamic>;
+          sseFormatDetected = true;
           final choices = json['choices'] as List?;
           if (choices != null && choices.isNotEmpty) {
             final delta = choices[0]['delta'] as Map?;
@@ -118,12 +135,59 @@ class LLMClient {
         }
       }
     }
+
+    // 走到这里说明 stream 结束了但没收到 [DONE]
+    if (!sseFormatDetected) {
+      // 不是 SSE 格式 — 整个 buffer 是普通 JSON
+      try {
+        final json = jsonDecode(buffer) as Map<String, dynamic>;
+        final choices = json['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final message = choices[0]['message'] as Map?;
+          if (message != null) {
+            final content = message['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              yield content;
+            }
+          }
+        }
+      } catch (_) {
+        // 真解析不出来
+      }
+    }
+  }
+
+  /// 流式但带 fallback — 优先用 stream，失败用普通 chat
+  Stream<String> chatStreamWithFallback({
+    required String systemPrompt,
+    required List<Map<String, String>> messages,
+  }) async* {
+    final allChunks = <String>[];
+    var hasError = false;
+    try {
+      await for (final chunk in chatStream(
+        systemPrompt: systemPrompt,
+        messages: messages,
+      )) {
+        allChunks.add(chunk);
+        yield chunk;
+      }
+    } catch (e) {
+      hasError = true;
+    }
+
+    // 如果流式没产出任何 chunk 或出错, fallback 到普通 chat
+    if (hasError || allChunks.isEmpty) {
+      final full = await chatMultiTurn(
+        systemPrompt: systemPrompt,
+        messages: messages,
+      );
+      yield full;
+    }
   }
 
   /// 估算字符数对应的 token 数 (粗估)
   static int estimateTokens(String text) {
-    // 中文 1 字 ≈ 1.5 token, 英文 1 字符 ≈ 0.25 token
-    // 简化: 总字符数 / 2 (粗略)
     return (text.length / 2).ceil();
   }
 

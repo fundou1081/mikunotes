@@ -200,7 +200,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     final buffer = StringBuffer();
 
     try {
-      await for (final chunk in client.chatStream(
+      await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: [
           {
@@ -755,7 +755,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     try {
       final client = ref.read(llmClientProvider);
       final buffer = StringBuffer();
-      await for (final chunk in client.chatStream(
+      await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: messages.first['content']!,
         messages: history,
       )) {
