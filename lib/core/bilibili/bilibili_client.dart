@@ -1,4 +1,45 @@
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+
+/// WBI 签名混料表
+const _mixinKeyEncTab = <int>[
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+  27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+  37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+  22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+];
+
+String _getMixinKey(String orig) {
+  final buf = StringBuffer();
+  for (final i in _mixinKeyEncTab) {
+    if (i < orig.length) buf.write(orig[i]);
+  }
+  return buf.toString().substring(0, 32);
+}
+
+/// 对参数进行 WBI 签名，返回加上 wts + w_rid 的新字典
+Map<String, dynamic> signWbi(
+  Map<String, dynamic> params,
+  String imgKey,
+  String subKey,
+) {
+  final mixinKey = _getMixinKey(imgKey + subKey);
+  final wts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  final p = Map<String, dynamic>.from(params);
+  p['wts'] = wts;
+
+  // 按 key 排序
+  final sortedKeys = p.keys.toList()..sort();
+  final queryParts = sortedKeys.map((k) {
+    final v = p[k];
+    final encodedValue = Uri.encodeQueryComponent(v.toString());
+    return '$k=$encodedValue';
+  }).join('&');
+
+  final wRid = md5.convert(('$queryParts$mixinKey').codeUnits).toString();
+  p['w_rid'] = wRid;
+  return p;
+}
 
 /// B站登录用户信息
 class BiliUser {
@@ -42,10 +83,15 @@ class BilibiliClient {
   final Dio _dio;
   String? _sessdata;
   BiliUser? _user;
+  String? _wbiImgKey;
+  String? _wbiSubKey;
+  DateTime? _wbiKeysFetchedAt;
 
-  BilibiliClient({String? sessdata, BiliUser? user})
+  BilibiliClient({String? sessdata, BiliUser? user, String? wbiImgKey, String? wbiSubKey})
       : _sessdata = sessdata,
         _user = user,
+        _wbiImgKey = wbiImgKey,
+        _wbiSubKey = wbiSubKey,
         _dio = Dio(BaseOptions(
           connectTimeout: const Duration(seconds: 15),
           headers: {
@@ -55,6 +101,37 @@ class BilibiliClient {
           },
         )) {
     _updateCookies();
+  }
+
+  /// 从 /x/web-interface/nav 获取 wbi 签名密钥 (1 天有效)
+  Future<void> _ensureWbiKeys({bool force = false}) async {
+    if (!force && _wbiImgKey != null && _wbiSubKey != null) {
+      if (_wbiKeysFetchedAt != null &&
+          DateTime.now().difference(_wbiKeysFetchedAt!) <
+              const Duration(hours: 12)) {
+        return;
+      }
+    }
+    try {
+      final resp = await _dio.get('https://api.bilibili.com/x/web-interface/nav');
+      final data = resp.data?['data'];
+      if (data is Map && data['wbi_img'] is Map) {
+        final wbi = data['wbi_img'] as Map;
+        final imgUrl = wbi['img_url'] as String? ?? '';
+        final subUrl = wbi['sub_url'] as String? ?? '';
+        _wbiImgKey = _extractKeyFromUrl(imgUrl);
+        _wbiSubKey = _extractKeyFromUrl(subUrl);
+        _wbiKeysFetchedAt = DateTime.now();
+      }
+    } catch (_) {
+      // 获取失败也不影响其他功能
+    }
+  }
+
+  String _extractKeyFromUrl(String url) {
+    final filename = url.split('/').last;
+    final dotIdx = filename.lastIndexOf('.');
+    return dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
   }
 
   void _updateCookies() {
@@ -191,19 +268,31 @@ class BilibiliClient {
     }
   }
 
-  /// 获取字幕列表 (需要登录)
+  /// 获取字幕列表 (需要登录 + WBI 签名)
   Future<Map<String, dynamic>> getSubtitleInfo({
     required int aid,
     required int cid,
   }) async {
+    await _ensureWbiKeys();
+    if (_wbiImgKey == null || _wbiSubKey == null) {
+      throw Exception('WBI 密钥获取失败，无法获取字幕');
+    }
+
+    final signed = signWbi(
+      {'aid': aid, 'cid': cid},
+      _wbiImgKey!,
+      _wbiSubKey!,
+    );
+
     final resp = await _dio.get(
       'https://api.bilibili.com/x/player/wbi/v2',
-      queryParameters: {
-        'aid': aid,
-        'cid': cid,
-      },
+      queryParameters: signed,
     );
-    return resp.data['data']['subtitle'] as Map<String, dynamic>;
+    final data = resp.data?['data'];
+    if (data is! Map || data['subtitle'] is! Map) {
+      throw Exception('字幕信息响应格式异常: ${resp.data?['message'] ?? '未知错误'}');
+    }
+    return data['subtitle'] as Map<String, dynamic>;
   }
 
   /// 下载字幕 JSON 内容

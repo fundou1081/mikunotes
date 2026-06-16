@@ -13,9 +13,17 @@ class VideoRepository {
   VideoRepository(this._bili, this._db);
 
   /// 从 URL 或 BV号 解析 BV号
-  /// 如果是短链接 (b23.tv/xxx)，会先解析为完整 URL
+  /// 支持的输入格式:
+  ///   - "BV1xxx" (纯 BV 号)
+  ///   - "https://www.bilibili.com/video/BV1xxx" (完整链接)
+  ///   - "https://b23.tv/xxx" (短链接)
+  ///   - "【标题】 https://b23.tv/xxx" (分享整段文本)
   Future<String?> parseBvid(String input) async {
-    String url = input.trim();
+    String text = input.trim();
+
+    // 从整段文本中提取出 URL (例如 "【标题】 https://b23.tv/xxx")
+    final urlMatch = RegExp(r'https?://[^\s\u4e00-\u9fff]+').firstMatch(text);
+    String url = urlMatch?.group(0) ?? text;
 
     // 短链接需要先解析
     if (RegExp(r'https?://(b23\.tv|bili2233\.cn|bili22\.cn)/[A-Za-z0-9]+')
