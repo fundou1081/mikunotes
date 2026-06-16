@@ -869,14 +869,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    final client = ref.read(llmClientProvider);
                     final messenger = ScaffoldMessenger.of(context);
                     messenger.showSnackBar(
                       const SnackBar(content: Text('测试中...')),
                     );
-                    final ok = await client.testConnection();
-                    messenger.showSnackBar(
-                      SnackBar(content: Text(ok ? '✓ 连接成功' : '✗ 连接失败')),
+                    final client = ref.read(llmClientProvider);
+                    final config = ref.read(aiConfigProvider);
+                    final result = await client.testConnection();
+                    messenger.hideCurrentSnackBar();
+                    if (!mounted) return;
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('连接测试'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${config.provider.label}\n${config.effectiveModel}',
+                                style: Theme.of(context).textTheme.labelMedium),
+                            const SizedBox(height: 8),
+                            Text(result),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('确定'),
+                          ),
+                        ],
+                      ),
                     );
                   },
                   icon: const Icon(Icons.wifi_find),

@@ -215,25 +215,54 @@ class LLMClient {
     return (text.length / 2).ceil();
   }
 
-  /// 测试连接
-  Future<bool> testConnection() async {
+  /// 测试连接 - 返回详细诊断信息
+  Future<String> testConnection() async {
     try {
       final response = await _dio.post(
         '/chat/completions',
         data: {
           'model': _config.effectiveModel,
           'messages': [
-            {'role': 'user', 'content': 'ping'},
+            {'role': 'user', 'content': 'Reply OK only'},
           ],
-          'max_tokens': 5,
+          'max_tokens': 10,
         },
         options: Options(
-          receiveTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 15),
         ),
       );
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
+      if (response.statusCode == 200) {
+        final data = response.data as Map?;
+        final choices = data?['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final msg = choices[0]['message'] as Map?;
+          final content = msg?['content'] as String? ?? '';
+          final model = data?['model'] as String? ?? '?';
+          if (content.trim().isNotEmpty) {
+            return '✅ 连接成功\n模型: $model\n响应: ${content.trim().substring(0, content.trim().length < 40 ? content.trim().length : 40)}';
+          }
+          // content 为空，检查是否是推理模型
+          final reasoning = msg?['reasoning_content'] as String? ?? '';
+          if (reasoning.isNotEmpty) {
+            return '⚠️ 推理模型 ($model)\ncontent 为空，reasoning 有内容\n建议开启 disableReasoning';
+          }
+        }
+        return '✅ HTTP 200\n但响应内容为空（model: ${data?['model'] ?? '?'})';
+      }
+      return '⚠️ HTTP ${response.statusCode}';
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401) {
+        return '❌ 401: API Key 无效';
+      } else if (code == 403) {
+        return '❌ 403: 权限不足';
+      } else if (code == 404) {
+        return '❌ 404: 模型不存在 (${_config.effectiveModel})';
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        return '❌ 连接超时: 检查 Base URL';
+      } else {
+        return '❌ 失败: ${code ?? ""} ${e.message ?? ""}';
+      }
     }
   }
 }
