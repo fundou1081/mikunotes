@@ -346,6 +346,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
   }
 
   Widget _streamingView() {
+    final isComplete = _summary != null && !_generating;
     return Column(
       children: [
         if (_generating)
@@ -367,11 +368,36 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
                     child: Text(_error!),
                   ),
                 ),
-              if (_summary != null || _generating)
-                Markdown(
-                  data: _summary ?? '',
-                  selectable: true,
+              if (_generating && (_summary == null || _summary!.isEmpty))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'AI 思考中…',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+              if (_summary != null && _summary!.isNotEmpty)
+                isComplete
+                    ? Markdown(data: _summary!, selectable: true)
+                    : SelectableText(
+                        _summary!,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
             ],
           ),
         ),
@@ -380,7 +406,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
             padding: const EdgeInsets.all(8),
             child: FilledButton.tonalIcon(
               onPressed: () {
-                _streamingSummaryId = null; // 取消 stream
+                _streamingSummaryId = null;
                 setState(() => _generating = false);
               },
               icon: const Icon(Icons.stop),
