@@ -138,7 +138,7 @@ class BackupService {
       'chat_messages': allMessages,
     };
 
-    final path = '$dir/mikunotes_backup_$timestamp.json';
+    final path = '${dir.path}/mikunotes_backup_$timestamp.json';
     final file = File(path);
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
     return path;
