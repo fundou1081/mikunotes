@@ -5,6 +5,7 @@ import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
+import 'package:mikunotes/core/storage/backup_service.dart';
 import 'package:mikunotes/core/storage/database.dart' hide Video;
 import 'package:mikunotes/core/providers/video_repository.dart';
 
@@ -212,4 +213,10 @@ final videoRepositoryProvider = Provider<VideoRepository>((ref) {
     ref.watch(bilibiliClientProvider),
     ref.watch(databaseProvider),
   );
+});
+
+// ─── 备份服务 ─────────────────────────────────────────────────
+
+final backupServiceProvider = Provider<BackupService>((ref) {
+  return BackupService(ref.watch(databaseProvider));
 });

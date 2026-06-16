@@ -4,6 +4,7 @@ import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/core/storage/backup_service.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
 import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
@@ -324,16 +325,140 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.dispose();
   }
 
+  Future<void> _showRestoreDialog(BuildContext context, BackupService backupService) async {
+    final backups = await BackupService.listBackups();
+    if (!mounted) return;
+    if (backups.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Downloads/MikuNotes/ 下没有备份文件')),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择备份文件恢复'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: backups.length,
+            itemBuilder: (_, i) {
+              final name = backups[i].split('/').last;
+              return ListTile(
+                title: Text(name, style: const TextStyle(fontSize: 13)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('恢复中…')),
+                  );
+                  final result = await backupService.restoreFrom(backups[i]);
+                  if (!context.mounted) return;
+                  if (result.success) {
+                    final stats = result.stats?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ?? '';
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('✓ 恢复完成: $stats')),
+                    );
+                    ref.read(videoListProvider.notifier).load();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('✗ 恢复失败: ${result.error}')),
+                    );
+                  }
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(aiConfigProvider);
     final isLoggedIn = ref.watch(bilibiliClientProvider).isLoggedIn;
+    final backupService = ref.read(backupServiceProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── 数据管理 ──────────────────────────────
+          Text('数据管理', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.backup),
+                  title: const Text('导出所有数据'),
+                  subtitle: const Text('备份到外部存储 MikuNotes_backups/，重装后可恢复'),
+                  onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(const SnackBar(content: Text('导出中…')));
+                    try {
+                      final path = await backupService.exportAll();
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('✓ 已导出到: $path')),
+                      );
+                    } catch (e) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('✗ 导出失败: $e')),
+                      );
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.restore),
+                  title: const Text('从备份恢复'),
+                  subtitle: const Text('从外部存储 MikuNotes_backups/ 恢复'),
+                  onTap: () => _showRestoreDialog(context, backupService),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.folder_open),
+                  title: const Text('查看备份目录'),
+                  subtitle: const Text('查看外部存储 MikuNotes_backups/'),
+                  onTap: () async {
+                    final backups = await BackupService.listBackups();
+                    if (!mounted) return;
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('备份文件'),
+                        content: backups.isEmpty
+                            ? const Text('暂无备份')
+                            : SizedBox(
+                                width: double.maxFinite,
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: backups.length,
+                                  itemBuilder: (_, i) {
+                                    final name = backups[i].split('/').last;
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(name, style: const TextStyle(fontSize: 13)),
+                                    );
+                                  },
+                                ),
+                              ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
           // ── 账号 ──────────────────────────────────
           Text('账号', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
