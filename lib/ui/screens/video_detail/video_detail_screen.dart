@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
+import 'package:mikunotes/core/llm/prompt_template.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
 import 'package:mikunotes/core/models/subtitle.dart';
@@ -166,6 +167,8 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
   String? _error;
   String? _streamingSummaryId; // 当前 stream 的总结 ID
 
+  String _getVideoTitle() => 'BV ${widget.bvid}';
+
   Future<void> _generateSummary({String? customPrompt, String? title}) async {
     if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
       setState(() => _error = '请先下载字幕');
@@ -189,13 +192,32 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     final client = ref.read(llmClientProvider);
     final config = ref.read(aiConfigProvider);
     final prompt = customPrompt ?? config.customSystemPrompt;
-    final systemPrompt = prompt.isNotEmpty ? prompt : _defaultSummaryPrompt;
 
     final transcript = widget.subtitle!.fullText;
     final maxChars = config.maxContextChars;
     final truncated = transcript.length > maxChars
-        ? '${transcript.substring(0, maxChars)}\n\n... (已截断)'
+        ? '${transcript.substring(0, maxChars)}'
         : transcript;
+
+    // 构建模板变量
+    final templateVars = {
+      'video_title': _getVideoTitle(),
+      'bvid': widget.bvid,
+      'subtitle': transcript,
+      'subtitle_truncated': truncated,
+      'language': widget.subtitle!.language,
+      'uploader': '',
+      'duration': '',
+      'page_count': '',
+    };
+
+    // 使用模板或自定义 prompt
+    final tpl = prompt.isNotEmpty
+        ? prompt
+        : (config.summaryTemplate.isNotEmpty
+            ? config.summaryTemplate
+            : _defaultSummaryPrompt);
+    final systemPrompt = PromptTemplate.render(tpl, templateVars);
 
     final buffer = StringBuffer();
 
@@ -203,10 +225,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       await for (final chunk in client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: [
-          {
-            'role': 'user',
-            'content': '视频 BV号: ${widget.bvid}\n\n字幕内容:\n$truncated',
-          },
+          {'role': 'user', 'content': '请开始总结'},
         ],
       )) {
         if (_streamingSummaryId != summaryId) return; // 用户切换了
@@ -771,18 +790,31 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     _scrollToBottom();
 
     // 构造上下文
-    final messages = await repo.buildChatMessages(
-      session.id,
-      transcript: widget.subtitle!.fullText,
-    );
-    // 移除 messages[0] (system prompt)，用 chatStream 的 systemPrompt 参数
-    final history = messages.skip(1).toList();
+    final sessionMsgs = await repo.getChatMessages(session.id);
+    final history = sessionMsgs
+        .map((m) => {'role': m.role, 'content': m.content})
+        .toList();
+
+    // 使用模板渲染 system prompt
+    final chatTemplate = config.chatTemplate.isNotEmpty
+        ? config.chatTemplate
+        : defaultChatTemplate;
+    final systemPrompt = PromptTemplate.render(chatTemplate, {
+      'video_title': 'BV ${widget.bvid}',
+      'bvid': widget.bvid,
+      'subtitle': widget.subtitle!.fullText,
+      'subtitle_truncated': widget.subtitle!.fullText,
+      'language': widget.subtitle!.language,
+      'uploader': '',
+      'duration': '',
+      'page_count': '',
+    });
 
     try {
       final client = ref.read(llmClientProvider);
       final buffer = StringBuffer();
       await for (final chunk in client.chatStreamWithFallback(
-        systemPrompt: messages.first['content']!,
+        systemPrompt: systemPrompt,
         messages: history,
       )) {
         buffer.write(chunk);

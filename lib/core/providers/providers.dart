@@ -62,6 +62,8 @@ class AIConfigNotifier extends StateNotifier<AIConfig> {
     double? temperature,
     int? maxTokens,
     String? customSystemPrompt,
+    String? summaryTemplate,
+    String? chatTemplate,
   }) async {
     state = state.copyWith(
       baseUrl: baseUrl,
@@ -70,6 +72,8 @@ class AIConfigNotifier extends StateNotifier<AIConfig> {
       temperature: temperature,
       maxTokens: maxTokens,
       customSystemPrompt: customSystemPrompt,
+      summaryTemplate: summaryTemplate,
+      chatTemplate: chatTemplate,
     );
     if (baseUrl != null) await _secureStorage.write(key: _kAiBaseUrl, value: baseUrl);
     if (apiKey != null) await _secureStorage.write(key: _kApiKey, value: apiKey);

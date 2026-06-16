@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
+import 'package:mikunotes/core/llm/prompt_template.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/backup_service.dart';
@@ -325,6 +326,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.dispose();
   }
 
+  void _showTemplateEditor(
+    BuildContext context, {
+    required String title,
+    required String initial,
+    required String defaultTemplate,
+    required Function(String) onSave,
+  }) {
+    final controller = TextEditingController(
+      text: initial.isEmpty ? defaultTemplate : initial,
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('可用变量:',
+                  style: Theme.of(ctx).textTheme.labelSmall),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: PromptTemplate.availableVariables.entries
+                    .map((e) => ActionChip(
+                          label: Text('{{${e.key}}}',
+                              style: const TextStyle(fontSize: 11)),
+                          onPressed: () {
+                            final cursorPos = controller.selection.base.offset;
+                            final newText = controller.text.substring(0, cursorPos) +
+                                '{{${e.key}}}' +
+                                controller.text.substring(cursorPos);
+                            controller.text = newText;
+                            controller.selection = TextSelection.collapsed(
+                              offset: cursorPos + e.key.length + 4,
+                            );
+                          },
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 300,
+                child: TextField(
+                  controller: controller,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '输入模板...',
+                  ),
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  controller.text = defaultTemplate;
+                },
+                child: const Text('恢复默认'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onSave(controller.text);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('✓ 模板已保存')),
+              );
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showRestoreDialog(BuildContext context, BackupService backupService) async {
     final backups = await BackupService.listBackups();
     if (!mounted) return;
@@ -575,6 +666,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               helperText: '留空使用默认 prompt',
             ),
             maxLines: 4,
+          ),
+          const SizedBox(height: 16),
+          const SizedBox(height: 16),
+          // ── Prompt 模板 ──────────────────────────
+          Text('Prompt 模板', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text('支持 {{video_title}} {{bvid}} {{subtitle}} {{subtitle_truncated}} {{language}} {{uploader}} {{duration}} {{page_count}} 变量',
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.summarize),
+                  title: const Text('总结模板'),
+                  subtitle: Text(
+                    config.summaryTemplate.isEmpty
+                        ? '(使用默认)'
+                        : config.summaryTemplate.substring(
+                            0, config.summaryTemplate.length < 80
+                                ? config.summaryTemplate.length
+                                : 80),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => _showTemplateEditor(
+                    context,
+                    title: '总结 Prompt 模板',
+                    initial: config.summaryTemplate,
+                    defaultTemplate: defaultSummaryTemplate,
+                    onSave: (v) async {
+                      await ref
+                          .read(aiConfigProvider.notifier)
+                          .updateConfig(summaryTemplate: v);
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.chat_bubble_outline),
+                  title: const Text('对话模板'),
+                  subtitle: Text(
+                    config.chatTemplate.isEmpty
+                        ? '(使用默认)'
+                        : config.chatTemplate.substring(
+                            0, config.chatTemplate.length < 80
+                                ? config.chatTemplate.length
+                                : 80),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => _showTemplateEditor(
+                    context,
+                    title: '对话 Prompt 模板',
+                    initial: config.chatTemplate,
+                    defaultTemplate: defaultChatTemplate,
+                    onSave: (v) async {
+                      await ref
+                          .read(aiConfigProvider.notifier)
+                          .updateConfig(chatTemplate: v);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Row(
