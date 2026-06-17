@@ -64,6 +64,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
     required VideoSubtitle subtitle,
     String? customPrompt,
     String? templateId,
+    int page = 0,
   }) async {
     // 取消同视频之前的生成
     final prev = state[bvid];
@@ -159,6 +160,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         type: summary_model.SummaryType.structured,
         modelUsed: config.effectiveModel,
         promptUsed: systemPrompt,
+        page: page,
       );
 
       // 提取 AI tags (异步,不阻塞)

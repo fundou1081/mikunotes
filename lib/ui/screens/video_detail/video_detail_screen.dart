@@ -151,6 +151,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             bvid: widget.bvid,
             allSubtitles: _allSubtitles,
             selectedLang: _selectedLang,
+            selectedPage: _selectedPage,
             loading: _loadingSubtitle,
             onLanguageChanged: (lang) {
               setState(() {
@@ -170,7 +171,9 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
 
   Future<void> _loadSubtitleForLang(String lang) async {
     final repo = ref.read(videoRepositoryProvider);
-    final sub = await repo.getSubtitle(widget.bvid, language: lang);
+    // 加载指定页面的字幕 (page=0 时加载任一, 1+ 时加载对应页)
+    final page = _selectedPage == 0 ? null : _selectedPage;
+    final sub = await repo.getSubtitle(widget.bvid, language: lang, page: page);
     if (mounted) setState(() => _subtitle = sub);
   }
 
@@ -197,12 +200,8 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       selected: selected,
       onSelected: (_) {
         setState(() => _selectedPage = page);
-        if (page == 0) {
-          // 整体: 加载所有P字幕
-          _loadSubtitleForLang(_selectedLang ?? 'zh');
-        } else {
-          _loadSubtitleForLang(_selectedLang ?? 'zh');
-        }
+        // 切换到指定页面, 重新加载字幕
+        _loadSubtitleForLang(_selectedLang ?? 'zh');
       },
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -350,6 +349,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       subtitle: widget.subtitle!,
       customPrompt: customPrompt,
       templateId: templateId,
+      page: widget.selectedPage,
     );
   }
 
@@ -442,11 +442,15 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
       future: ref.read(videoRepositoryProvider).getAllSummaries(widget.bvid),
       builder: (ctx, snap) {
         final summaries = snap.data ?? [];
-        final latest = summaries.isNotEmpty ? summaries.first : null;
+        // 按页面过滤 (0=整体显示全部, 1+ 只显示对应页)
+        final pageFiltered = widget.selectedPage == 0
+            ? summaries
+            : summaries.where((s) => s.page == widget.selectedPage).toList();
+        final latest = pageFiltered.isNotEmpty ? pageFiltered.first : null;
 
         // 选中的历史总结
         if (_selectedSummaryId != null) {
-          final selected = summaries.firstWhere(
+          final selected = pageFiltered.firstWhere(
             (s) => s.id == _selectedSummaryId,
             orElse: () => latest!,
           );
@@ -517,7 +521,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
 
         // 有已保存的总结
         if (latest != null) {
-          return _buildSummaryView(latest, summaries);
+          return _buildSummaryView(latest, pageFiltered);
         }
 
         // 空状态
@@ -1296,6 +1300,7 @@ class _SubtitleTab extends ConsumerStatefulWidget {
   final String? selectedLang;
   final bool loading;
   final ValueChanged<String> onLanguageChanged;
+  final int selectedPage;
   const _SubtitleTab({
     super.key,
     required this.bvid,
@@ -1303,6 +1308,7 @@ class _SubtitleTab extends ConsumerStatefulWidget {
     required this.selectedLang,
     required this.loading,
     required this.onLanguageChanged,
+    this.selectedPage = 1,
   });
 
   @override

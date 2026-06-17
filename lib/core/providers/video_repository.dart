@@ -219,18 +219,24 @@ class VideoRepository {
   }
 
   /// 获取一个视频的指定语言字幕
-  Future<VideoSubtitle?> getSubtitle(String bvid, {String? language}) async {
+  Future<VideoSubtitle?> getSubtitle(String bvid, {String? language, int? page}) async {
     final subs = await _db.getSubtitlesForVideo(bvid);
     if (subs.isEmpty) return null;
 
+    // 过滤 by page
+    final pageFiltered = page != null
+        ? subs.where((s) => s.page == page).toList()
+        : subs;
+    if (pageFiltered.isEmpty) return null;
+
     final matched = language != null
-        ? subs.firstWhere(
+        ? pageFiltered.firstWhere(
             (s) => s.language == language,
-            orElse: () => subs.first,
+            orElse: () => pageFiltered.first,
           )
-        : subs.firstWhere(
+        : pageFiltered.firstWhere(
             (s) => s.language.contains('中文') || s.language.toLowerCase().contains('zh'),
-            orElse: () => subs.first,
+            orElse: () => pageFiltered.first,
           );
 
     final entries = SubtitleParser.parseBilibiliJson(matched.rawJson);
@@ -328,6 +334,7 @@ class VideoRepository {
               modelUsed: r.modelUsed,
               promptUsed: r.promptUsed,
               createdAt: r.createdAt,
+              page: r.page,
             ))
         .toList();
   }
@@ -359,6 +366,7 @@ class VideoRepository {
     String? modelUsed,
     String? promptUsed,
     String? targetTopic,
+    int page = 0,
   }) async {
     final id = _uuid.v4();
     final finalTitle = title?.trim().isNotEmpty == true
@@ -374,11 +382,13 @@ class VideoRepository {
       promptUsed: promptUsed ?? '',
       createdAt: DateTime.now(),
       title: finalTitle,
+      page: page,
     );
 
     await _db.saveSummary(SummariesCompanion.insert(
       id: id,
       bvid: bvid,
+      page: drift.Value(page),
       title: drift.Value(finalTitle),
       type: type.name,
       content: content,

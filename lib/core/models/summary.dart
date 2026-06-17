@@ -9,6 +9,7 @@ class Summary {
   final String modelUsed;
   final String promptUsed;
   final DateTime createdAt;
+  final int page; // 0=整体, 1+第N部分
 
   const Summary({
     required this.id,
@@ -19,5 +20,6 @@ class Summary {
     this.modelUsed = '',
     this.promptUsed = '',
     required this.createdAt,
+    this.page = 0,
   });
 }
