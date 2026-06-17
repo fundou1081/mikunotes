@@ -76,8 +76,12 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     final repo = ref.read(videoRepositoryProvider);
     final all = await repo.getAllSubtitles(widget.bvid);
     VideoSubtitle? sub;
+    // 加载当前选中页面的字幕
+    final page = _selectedPage == 0 ? null : _selectedPage;
     if (all.isNotEmpty) {
-      sub = await repo.getSubtitle(widget.bvid);
+      sub = await repo.getSubtitle(widget.bvid, page: page, language: _selectedLang);
+      // fallback: any page
+      sub ??= await repo.getSubtitle(widget.bvid);
     }
     // 加载视频组信息 (pageCount 等)
     final group = await ref.read(databaseProvider).getVideoGroup(widget.bvid);
@@ -171,10 +175,15 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
 
   Future<void> _loadSubtitleForLang(String lang) async {
     final repo = ref.read(videoRepositoryProvider);
-    // 加载指定页面的字幕 (page=0 时加载任一, 1+ 时加载对应页)
     final page = _selectedPage == 0 ? null : _selectedPage;
+    setState(() => _loadingSubtitle = true);
     final sub = await repo.getSubtitle(widget.bvid, language: lang, page: page);
-    if (mounted) setState(() => _subtitle = sub);
+    if (mounted) {
+      setState(() {
+        _subtitle = sub;
+        _loadingSubtitle = false;
+      });
+    }
   }
 
   Future<void> _refreshSubtitles() async {
@@ -290,6 +299,13 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     }
   }
 
+  Widget _countOption(BuildContext c, int count, String label) {
+    return SimpleDialogOption(
+      onPressed: () => Navigator.pop(c, count),
+      child: Text(label),
+    );
+  }
+
   void _showLoading(String msg) {
     showDialog(
       context: context, barrierDismissible: false,
@@ -325,7 +341,13 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
   String? _selectedSummaryId; // 历史中选择的总结
 
   Future<void> _generateSummary({String? customPrompt, String? title}) async {
-    if (widget.subtitle == null || widget.subtitle!.entries.isEmpty) {
+    // 确保用当前选中页面的字幕 (而不是旧的 widget.subtitle)
+    final repo = ref.read(videoRepositoryProvider);
+    final page = widget.selectedPage == 0 ? null : widget.selectedPage;
+    final subtitle = widget.subtitle?.videoId == widget.bvid
+        ? widget.subtitle
+        : await repo.getSubtitle(widget.bvid, page: page);
+    if (subtitle == null || subtitle.entries.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先下载字幕')),
       );
@@ -346,7 +368,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     }
     await ref.read(generationProvider.notifier).startSummaryGeneration(
       bvid: widget.bvid,
-      subtitle: widget.subtitle!,
+      subtitle: subtitle,
       customPrompt: customPrompt,
       templateId: templateId,
       page: widget.selectedPage,
@@ -1357,27 +1379,42 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.loading || _loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
     if (widget.allSubtitles.isEmpty) {
-      return const Center(child: Text('暂无字幕'));
+      return const Center(child: Text('暂无字幕', style: TextStyle(color: Colors.grey)));
+    }
+    // 按页过滤
+    final pageSubtitles = widget.selectedPage == 0
+        ? widget.allSubtitles
+        : widget.allSubtitles.where((s) => s.page == widget.selectedPage).toList();
+    if (pageSubtitles.isEmpty) {
+      return const Center(child: Text('当前页暂无字幕', style: TextStyle(color: Colors.grey)));
     }
 
+    // 字幕列表
     final filteredEntries = _subtitle?.entries.where((e) {
-      if (_searchQuery.isEmpty) return true;
-      return e.content.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList() ?? [];
-
+          if (_searchQuery.isEmpty) return true;
+          return e.content.toLowerCase().contains(_searchQuery.toLowerCase());
+        }).toList() ?? [];
     return Column(
       children: [
-        // 语言选择 + 统计
         Container(
           padding: const EdgeInsets.all(12),
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 分P 指示器
+              if (widget.selectedPage > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text('📑 P${widget.selectedPage}',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                ),
               Row(
                 children: [
                   const Icon(Icons.translate, size: 16),
@@ -1385,7 +1422,7 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
                   DropdownButton<String>(
                     value: widget.selectedLang,
                     isDense: true,
-                    items: widget.allSubtitles
+                    items: pageSubtitles
                         .map((s) => DropdownMenuItem(
                               value: s.language,
                               child: Text(s.language),
@@ -1403,10 +1440,10 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
                     ),
                 ],
               ),
-              if (widget.allSubtitles.length > 1) ...[
+              if (pageSubtitles.length > 1) ...[
                 const SizedBox(height: 4),
                 Text(
-                  '共 ${widget.allSubtitles.length} 种语言',
+                  '共 ${pageSubtitles.length} 种语言',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1496,10 +1533,3 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
     );
   }
 }
-Widget _countOption(BuildContext c, int count, String label) {
-    return SimpleDialogOption(
-      onPressed: () => Navigator.pop(c, count),
-      child: Text(label),
-    );
-  }
-// 📦 PARTFIX marker for the end of the file - to be replaced
