@@ -66,6 +66,12 @@ List<PromptTemplate> builtInSummaryTemplates() => [
         content: marketingSummaryTemplate,
         isBuiltIn: true,
       ),
+      const PromptTemplate(
+        id: 'builtin-summary-podcast',
+        name: '播客分析',
+        content: podcastSummaryTemplate,
+        isBuiltIn: true,
+      ),
     ];
 
 List<PromptTemplate> builtInChatTemplates() => [
