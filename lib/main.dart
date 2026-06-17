@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/ui/theme/app_theme.dart';
-import 'package:mikunotes/ui/screens/home/home_screen.dart';
+import 'package:mikunotes/ui/screens/containers/home_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +19,7 @@ class MikuNotesApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
       debugShowCheckedModeBanner: false,
-      home: const HomeScreen(),
+      home: const HomeShell(),
     );
   }
 }

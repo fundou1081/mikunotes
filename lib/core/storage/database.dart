@@ -79,19 +79,45 @@ class ChatMessages extends Table {
   BoolColumn get isCompressed => boolean().withDefault(const Constant(false))();
 }
 
+/// 容器表 (手动 / 收藏夹 / 稍后观看)
+class Containers extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get type => text()(); // 'manual' | 'favorite' | 'watch_later'
+  TextColumn get externalId => text().nullable()(); // B站收藏夹 ID (favorite 才有)
+  TextColumn get name => text()();
+  IntColumn get totalCount => integer().withDefault(const Constant(0))(); // B站原数
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
+/// 容器-视频 多对多关联表
+class ContainerVideos extends Table {
+  IntColumn get containerId => integer()();
+  TextColumn get bvid => text()();
+  DateTimeColumn get addedAt => dateTime()();
+  TextColumn get note => text().withDefault(const Constant(''))(); // 预留备注
+
+  @override
+  Set<Column> get primaryKey => {containerId, bvid};
+}
+
 @DriftDatabase(
-  tables: [Videos, Subtitles, Summaries, ChatSessions, ChatMessages],
+  tables: [Videos, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          // 创建默认的 "手动" 容器
+          await _ensureManualContainer();
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             // v2: 新增 title 字段到 Summaries, 加 ChatSessions 表
@@ -104,8 +130,50 @@ class AppDatabase extends _$AppDatabase {
             // v3: 加 aiTags 字段到 Videos
             await m.addColumn(videos, videos.aiTags);
           }
+          if (from < 4) {
+            // v4: 加 containers + container_videos 表, 迁移老视频到 manual 容器
+            await m.createTable(containers);
+            await m.createTable(containerVideos);
+            await _migrateOldVideosToManual();
+          }
         },
       );
+
+  /// v4 migration: 将老视频全部归到 manual 容器
+  Future<void> _migrateOldVideosToManual() async {
+    final manualId = await _ensureManualContainer();
+    final allVideos = await select(videos).get();
+    final now = DateTime.now();
+    for (final v in allVideos) {
+      await into(containerVideos).insert(
+        ContainerVideosCompanion.insert(
+          containerId: manualId,
+          bvid: v.bvid,
+          addedAt: v.addedAt,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    }
+    // avoid unused variable
+    now.toString();
+  }
+
+  /// 确保 "手动" 容器存在, 返回其 ID
+  Future<int> _ensureManualContainer() async {
+    final existing = await (select(containers)
+          ..where((c) => c.type.equals('manual')))
+        .getSingleOrNull();
+    if (existing != null) return existing.id;
+    final id = await into(containers).insert(
+      ContainersCompanion.insert(
+        type: 'manual',
+        name: '手动导入',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    );
+    return id;
+  }
 
   // ─── 视频 ──────────────────────────────────────────────
 
@@ -235,6 +303,135 @@ class AppDatabase extends _$AppDatabase {
   /// 清空会话所有消息
   Future<void> clearChatMessages(String sessionId) =>
       (delete(chatMessages)..where((m) => m.sessionId.equals(sessionId))).go();
+
+  // ─── 容器 ──────────────────────────────────────────────
+
+  /// 获取所有容器
+  Future<List<Container>> getAllContainers() =>
+      (select(containers)..orderBy([(c) => OrderingTerm.asc(c.id)])).get();
+
+  /// 获取指定类型的容器
+  Future<List<Container>> getContainersByType(String type) =>
+      (select(containers)..where((c) => c.type.equals(type))).get();
+
+  /// 根据 externalId (B站收藏夹 ID) 获取容器
+  Future<Container?> getContainerByExternalId(String externalId) =>
+      (select(containers)..where((c) => c.externalId.equals(externalId)))
+          .getSingleOrNull();
+
+  /// 获取指定 ID 的容器
+  Future<Container?> getContainer(int id) =>
+      (select(containers)..where((c) => c.id.equals(id))).getSingleOrNull();
+
+  /// 插入容器
+  Future<int> insertContainer(ContainersCompanion c) =>
+      into(containers).insert(c, mode: InsertMode.insertOrIgnore);
+
+  /// 更新容器 (名称 / totalCount)
+  Future<void> updateContainer(int id, ContainersCompanion c) =>
+      (update(containers)..where((c) => c.id.equals(id))).write(c);
+
+  /// 删除容器
+  Future<void> deleteContainer(int id) async {
+    await (delete(containerVideos)..where((cv) => cv.containerId.equals(id))).go();
+    await (delete(containers)..where((c) => c.id.equals(id))).go();
+  }
+
+  /// 将视频加入容器 (不重复)
+  Future<void> addVideoToContainer(int containerId, String bvid,
+      {DateTime? addedAt}) async {
+    await into(containerVideos).insert(
+      ContainerVideosCompanion.insert(
+        containerId: containerId,
+        bvid: bvid,
+        addedAt: addedAt ?? DateTime.now(),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  /// 从容器中移除视频
+  Future<void> removeVideoFromContainer(int containerId, String bvid) =>
+      (delete(containerVideos)
+            ..where((cv) => cv.containerId.equals(containerId) & cv.bvid.equals(bvid)))
+          .go();
+
+  /// 批量加入容器 (用于增量导入)
+  Future<void> bulkAddVideosToContainer(
+      int containerId, List<String> bvids) async {
+    final now = DateTime.now();
+    await batch((b) {
+      for (final bvid in bvids) {
+        b.insert(
+          containerVideos,
+          ContainerVideosCompanion.insert(
+            containerId: containerId,
+            bvid: bvid,
+            addedAt: now,
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+      }
+    });
+  }
+
+  /// 获取某个容器的所有视频 (返回 bvid 列表)
+  Future<List<String>> getBvidsInContainer(int containerId) =>
+      (select(containerVideos)
+            ..where((cv) => cv.containerId.equals(containerId))
+            ..orderBy([(cv) => OrderingTerm.desc(cv.addedAt)]))
+          .map((cv) => cv.bvid)
+          .get();
+
+  /// 获取指定 bvid 集合 (用于按容器查视频)
+  Future<List<Video>> getVideosInContainer(int containerId) async {
+    final bvids = await getBvidsInContainer(containerId);
+    if (bvids.isEmpty) return [];
+    return (select(videos)..where((v) => v.bvid.isIn(bvids))).get();
+  }
+
+  /// 获取容器的实际视频数 (用于统计已/总)
+  Future<int> countVideosInContainer(int containerId) async {
+    final result = await (selectOnly(containerVideos)
+          ..addColumns([containerVideos.bvid.count()])
+          ..where(containerVideos.containerId.equals(containerId)))
+        .getSingle();
+    return result.read(containerVideos.bvid.count()) ?? 0;
+  }
+
+  /// 获取视频所在的所有容器
+  Future<List<Container>> getContainersForBvid(String bvid) async {
+    final ids = await (select(containerVideos)..where((cv) => cv.bvid.equals(bvid)))
+        .map((cv) => cv.containerId)
+        .get();
+    if (ids.isEmpty) return [];
+    return (select(containers)..where((c) => c.id.isIn(ids))).get();
+  }
+
+  /// 确保 "手动" 容器存在
+  Future<Container> ensureManualContainer() async {
+    final existing = await (select(containers)
+          ..where((c) => c.type.equals('manual')))
+        .getSingleOrNull();
+    if (existing != null) return existing;
+    final id = await into(containers).insert(
+      ContainersCompanion.insert(
+        type: 'manual',
+        name: '手动导入',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    );
+    return Container(
+      id: id,
+      type: 'manual',
+      externalId: null,
+      name: '手动导入',
+      totalCount: 0,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+  }
 }
 
 LazyDatabase _openConnection() {

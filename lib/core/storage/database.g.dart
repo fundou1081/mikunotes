@@ -2089,6 +2089,654 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   }
 }
 
+class $ContainersTable extends Containers
+    with TableInfo<$ContainersTable, Container> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ContainersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _externalIdMeta =
+      const VerificationMeta('externalId');
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+      'external_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _totalCountMeta =
+      const VerificationMeta('totalCount');
+  @override
+  late final GeneratedColumn<int> totalCount = GeneratedColumn<int>(
+      'total_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, type, externalId, name, totalCount, createdAt, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'containers';
+  @override
+  VerificationContext validateIntegrity(Insertable<Container> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+          _externalIdMeta,
+          externalId.isAcceptableOrUnknown(
+              data['external_id']!, _externalIdMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('total_count')) {
+      context.handle(
+          _totalCountMeta,
+          totalCount.isAcceptableOrUnknown(
+              data['total_count']!, _totalCountMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Container map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Container(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      externalId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}external_id']),
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      totalCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}total_count'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $ContainersTable createAlias(String alias) {
+    return $ContainersTable(attachedDatabase, alias);
+  }
+}
+
+class Container extends DataClass implements Insertable<Container> {
+  final int id;
+  final String type;
+  final String? externalId;
+  final String name;
+  final int totalCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Container(
+      {required this.id,
+      required this.type,
+      this.externalId,
+      required this.name,
+      required this.totalCount,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || externalId != null) {
+      map['external_id'] = Variable<String>(externalId);
+    }
+    map['name'] = Variable<String>(name);
+    map['total_count'] = Variable<int>(totalCount);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ContainersCompanion toCompanion(bool nullToAbsent) {
+    return ContainersCompanion(
+      id: Value(id),
+      type: Value(type),
+      externalId: externalId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalId),
+      name: Value(name),
+      totalCount: Value(totalCount),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Container.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Container(
+      id: serializer.fromJson<int>(json['id']),
+      type: serializer.fromJson<String>(json['type']),
+      externalId: serializer.fromJson<String?>(json['externalId']),
+      name: serializer.fromJson<String>(json['name']),
+      totalCount: serializer.fromJson<int>(json['totalCount']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'type': serializer.toJson<String>(type),
+      'externalId': serializer.toJson<String?>(externalId),
+      'name': serializer.toJson<String>(name),
+      'totalCount': serializer.toJson<int>(totalCount),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Container copyWith(
+          {int? id,
+          String? type,
+          Value<String?> externalId = const Value.absent(),
+          String? name,
+          int? totalCount,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      Container(
+        id: id ?? this.id,
+        type: type ?? this.type,
+        externalId: externalId.present ? externalId.value : this.externalId,
+        name: name ?? this.name,
+        totalCount: totalCount ?? this.totalCount,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  Container copyWithCompanion(ContainersCompanion data) {
+    return Container(
+      id: data.id.present ? data.id.value : this.id,
+      type: data.type.present ? data.type.value : this.type,
+      externalId:
+          data.externalId.present ? data.externalId.value : this.externalId,
+      name: data.name.present ? data.name.value : this.name,
+      totalCount:
+          data.totalCount.present ? data.totalCount.value : this.totalCount,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Container(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('externalId: $externalId, ')
+          ..write('name: $name, ')
+          ..write('totalCount: $totalCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, type, externalId, name, totalCount, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Container &&
+          other.id == this.id &&
+          other.type == this.type &&
+          other.externalId == this.externalId &&
+          other.name == this.name &&
+          other.totalCount == this.totalCount &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ContainersCompanion extends UpdateCompanion<Container> {
+  final Value<int> id;
+  final Value<String> type;
+  final Value<String?> externalId;
+  final Value<String> name;
+  final Value<int> totalCount;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const ContainersCompanion({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.totalCount = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  ContainersCompanion.insert({
+    this.id = const Value.absent(),
+    required String type,
+    this.externalId = const Value.absent(),
+    required String name,
+    this.totalCount = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  })  : type = Value(type),
+        name = Value(name),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<Container> custom({
+    Expression<int>? id,
+    Expression<String>? type,
+    Expression<String>? externalId,
+    Expression<String>? name,
+    Expression<int>? totalCount,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (type != null) 'type': type,
+      if (externalId != null) 'external_id': externalId,
+      if (name != null) 'name': name,
+      if (totalCount != null) 'total_count': totalCount,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  ContainersCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? type,
+      Value<String?>? externalId,
+      Value<String>? name,
+      Value<int>? totalCount,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
+    return ContainersCompanion(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      externalId: externalId ?? this.externalId,
+      name: name ?? this.name,
+      totalCount: totalCount ?? this.totalCount,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (totalCount.present) {
+      map['total_count'] = Variable<int>(totalCount.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContainersCompanion(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('externalId: $externalId, ')
+          ..write('name: $name, ')
+          ..write('totalCount: $totalCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ContainerVideosTable extends ContainerVideos
+    with TableInfo<$ContainerVideosTable, ContainerVideo> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ContainerVideosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _containerIdMeta =
+      const VerificationMeta('containerId');
+  @override
+  late final GeneratedColumn<int> containerId = GeneratedColumn<int>(
+      'container_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  @override
+  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
+      'bvid', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _addedAtMeta =
+      const VerificationMeta('addedAt');
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+      'added_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+      'note', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  @override
+  List<GeneratedColumn> get $columns => [containerId, bvid, addedAt, note];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'container_videos';
+  @override
+  VerificationContext validateIntegrity(Insertable<ContainerVideo> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('container_id')) {
+      context.handle(
+          _containerIdMeta,
+          containerId.isAcceptableOrUnknown(
+              data['container_id']!, _containerIdMeta));
+    } else if (isInserting) {
+      context.missing(_containerIdMeta);
+    }
+    if (data.containsKey('bvid')) {
+      context.handle(
+          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
+    } else if (isInserting) {
+      context.missing(_bvidMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(_addedAtMeta,
+          addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta));
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+          _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {containerId, bvid};
+  @override
+  ContainerVideo map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ContainerVideo(
+      containerId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}container_id'])!,
+      bvid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      addedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}added_at'])!,
+      note: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}note'])!,
+    );
+  }
+
+  @override
+  $ContainerVideosTable createAlias(String alias) {
+    return $ContainerVideosTable(attachedDatabase, alias);
+  }
+}
+
+class ContainerVideo extends DataClass implements Insertable<ContainerVideo> {
+  final int containerId;
+  final String bvid;
+  final DateTime addedAt;
+  final String note;
+  const ContainerVideo(
+      {required this.containerId,
+      required this.bvid,
+      required this.addedAt,
+      required this.note});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['container_id'] = Variable<int>(containerId);
+    map['bvid'] = Variable<String>(bvid);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    map['note'] = Variable<String>(note);
+    return map;
+  }
+
+  ContainerVideosCompanion toCompanion(bool nullToAbsent) {
+    return ContainerVideosCompanion(
+      containerId: Value(containerId),
+      bvid: Value(bvid),
+      addedAt: Value(addedAt),
+      note: Value(note),
+    );
+  }
+
+  factory ContainerVideo.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ContainerVideo(
+      containerId: serializer.fromJson<int>(json['containerId']),
+      bvid: serializer.fromJson<String>(json['bvid']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+      note: serializer.fromJson<String>(json['note']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'containerId': serializer.toJson<int>(containerId),
+      'bvid': serializer.toJson<String>(bvid),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+      'note': serializer.toJson<String>(note),
+    };
+  }
+
+  ContainerVideo copyWith(
+          {int? containerId, String? bvid, DateTime? addedAt, String? note}) =>
+      ContainerVideo(
+        containerId: containerId ?? this.containerId,
+        bvid: bvid ?? this.bvid,
+        addedAt: addedAt ?? this.addedAt,
+        note: note ?? this.note,
+      );
+  ContainerVideo copyWithCompanion(ContainerVideosCompanion data) {
+    return ContainerVideo(
+      containerId:
+          data.containerId.present ? data.containerId.value : this.containerId,
+      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+      note: data.note.present ? data.note.value : this.note,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContainerVideo(')
+          ..write('containerId: $containerId, ')
+          ..write('bvid: $bvid, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(containerId, bvid, addedAt, note);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ContainerVideo &&
+          other.containerId == this.containerId &&
+          other.bvid == this.bvid &&
+          other.addedAt == this.addedAt &&
+          other.note == this.note);
+}
+
+class ContainerVideosCompanion extends UpdateCompanion<ContainerVideo> {
+  final Value<int> containerId;
+  final Value<String> bvid;
+  final Value<DateTime> addedAt;
+  final Value<String> note;
+  final Value<int> rowid;
+  const ContainerVideosCompanion({
+    this.containerId = const Value.absent(),
+    this.bvid = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ContainerVideosCompanion.insert({
+    required int containerId,
+    required String bvid,
+    required DateTime addedAt,
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : containerId = Value(containerId),
+        bvid = Value(bvid),
+        addedAt = Value(addedAt);
+  static Insertable<ContainerVideo> custom({
+    Expression<int>? containerId,
+    Expression<String>? bvid,
+    Expression<DateTime>? addedAt,
+    Expression<String>? note,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (containerId != null) 'container_id': containerId,
+      if (bvid != null) 'bvid': bvid,
+      if (addedAt != null) 'added_at': addedAt,
+      if (note != null) 'note': note,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ContainerVideosCompanion copyWith(
+      {Value<int>? containerId,
+      Value<String>? bvid,
+      Value<DateTime>? addedAt,
+      Value<String>? note,
+      Value<int>? rowid}) {
+    return ContainerVideosCompanion(
+      containerId: containerId ?? this.containerId,
+      bvid: bvid ?? this.bvid,
+      addedAt: addedAt ?? this.addedAt,
+      note: note ?? this.note,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (containerId.present) {
+      map['container_id'] = Variable<int>(containerId.value);
+    }
+    if (bvid.present) {
+      map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContainerVideosCompanion(')
+          ..write('containerId: $containerId, ')
+          ..write('bvid: $bvid, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('note: $note, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2097,12 +2745,22 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SummariesTable summaries = $SummariesTable(this);
   late final $ChatSessionsTable chatSessions = $ChatSessionsTable(this);
   late final $ChatMessagesTable chatMessages = $ChatMessagesTable(this);
+  late final $ContainersTable containers = $ContainersTable(this);
+  late final $ContainerVideosTable containerVideos =
+      $ContainerVideosTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [videos, subtitles, summaries, chatSessions, chatMessages];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        videos,
+        subtitles,
+        summaries,
+        chatSessions,
+        chatMessages,
+        containers,
+        containerVideos
+      ];
 }
 
 typedef $$VideosTableCreateCompanionBuilder = VideosCompanion Function({
@@ -3153,6 +3811,354 @@ typedef $$ChatMessagesTableProcessedTableManager = ProcessedTableManager<
     ),
     ChatMessage,
     PrefetchHooks Function()>;
+typedef $$ContainersTableCreateCompanionBuilder = ContainersCompanion Function({
+  Value<int> id,
+  required String type,
+  Value<String?> externalId,
+  required String name,
+  Value<int> totalCount,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+});
+typedef $$ContainersTableUpdateCompanionBuilder = ContainersCompanion Function({
+  Value<int> id,
+  Value<String> type,
+  Value<String?> externalId,
+  Value<String> name,
+  Value<int> totalCount,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+class $$ContainersTableFilterComposer
+    extends Composer<_$AppDatabase, $ContainersTable> {
+  $$ContainersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get totalCount => $composableBuilder(
+      column: $table.totalCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$ContainersTableOrderingComposer
+    extends Composer<_$AppDatabase, $ContainersTable> {
+  $$ContainersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get totalCount => $composableBuilder(
+      column: $table.totalCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ContainersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ContainersTable> {
+  $$ContainersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get totalCount => $composableBuilder(
+      column: $table.totalCount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ContainersTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ContainersTable,
+    Container,
+    $$ContainersTableFilterComposer,
+    $$ContainersTableOrderingComposer,
+    $$ContainersTableAnnotationComposer,
+    $$ContainersTableCreateCompanionBuilder,
+    $$ContainersTableUpdateCompanionBuilder,
+    (Container, BaseReferences<_$AppDatabase, $ContainersTable, Container>),
+    Container,
+    PrefetchHooks Function()> {
+  $$ContainersTableTableManager(_$AppDatabase db, $ContainersTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ContainersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ContainersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ContainersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> type = const Value.absent(),
+            Value<String?> externalId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<int> totalCount = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              ContainersCompanion(
+            id: id,
+            type: type,
+            externalId: externalId,
+            name: name,
+            totalCount: totalCount,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String type,
+            Value<String?> externalId = const Value.absent(),
+            required String name,
+            Value<int> totalCount = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+          }) =>
+              ContainersCompanion.insert(
+            id: id,
+            type: type,
+            externalId: externalId,
+            name: name,
+            totalCount: totalCount,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ContainersTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ContainersTable,
+    Container,
+    $$ContainersTableFilterComposer,
+    $$ContainersTableOrderingComposer,
+    $$ContainersTableAnnotationComposer,
+    $$ContainersTableCreateCompanionBuilder,
+    $$ContainersTableUpdateCompanionBuilder,
+    (Container, BaseReferences<_$AppDatabase, $ContainersTable, Container>),
+    Container,
+    PrefetchHooks Function()>;
+typedef $$ContainerVideosTableCreateCompanionBuilder = ContainerVideosCompanion
+    Function({
+  required int containerId,
+  required String bvid,
+  required DateTime addedAt,
+  Value<String> note,
+  Value<int> rowid,
+});
+typedef $$ContainerVideosTableUpdateCompanionBuilder = ContainerVideosCompanion
+    Function({
+  Value<int> containerId,
+  Value<String> bvid,
+  Value<DateTime> addedAt,
+  Value<String> note,
+  Value<int> rowid,
+});
+
+class $$ContainerVideosTableFilterComposer
+    extends Composer<_$AppDatabase, $ContainerVideosTable> {
+  $$ContainerVideosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+      column: $table.addedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnFilters(column));
+}
+
+class $$ContainerVideosTableOrderingComposer
+    extends Composer<_$AppDatabase, $ContainerVideosTable> {
+  $$ContainerVideosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+      column: $table.addedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ContainerVideosTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ContainerVideosTable> {
+  $$ContainerVideosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => column);
+
+  GeneratedColumn<String> get bvid =>
+      $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+}
+
+class $$ContainerVideosTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ContainerVideosTable,
+    ContainerVideo,
+    $$ContainerVideosTableFilterComposer,
+    $$ContainerVideosTableOrderingComposer,
+    $$ContainerVideosTableAnnotationComposer,
+    $$ContainerVideosTableCreateCompanionBuilder,
+    $$ContainerVideosTableUpdateCompanionBuilder,
+    (
+      ContainerVideo,
+      BaseReferences<_$AppDatabase, $ContainerVideosTable, ContainerVideo>
+    ),
+    ContainerVideo,
+    PrefetchHooks Function()> {
+  $$ContainerVideosTableTableManager(
+      _$AppDatabase db, $ContainerVideosTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ContainerVideosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ContainerVideosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ContainerVideosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> containerId = const Value.absent(),
+            Value<String> bvid = const Value.absent(),
+            Value<DateTime> addedAt = const Value.absent(),
+            Value<String> note = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ContainerVideosCompanion(
+            containerId: containerId,
+            bvid: bvid,
+            addedAt: addedAt,
+            note: note,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required int containerId,
+            required String bvid,
+            required DateTime addedAt,
+            Value<String> note = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ContainerVideosCompanion.insert(
+            containerId: containerId,
+            bvid: bvid,
+            addedAt: addedAt,
+            note: note,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ContainerVideosTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ContainerVideosTable,
+    ContainerVideo,
+    $$ContainerVideosTableFilterComposer,
+    $$ContainerVideosTableOrderingComposer,
+    $$ContainerVideosTableAnnotationComposer,
+    $$ContainerVideosTableCreateCompanionBuilder,
+    $$ContainerVideosTableUpdateCompanionBuilder,
+    (
+      ContainerVideo,
+      BaseReferences<_$AppDatabase, $ContainerVideosTable, ContainerVideo>
+    ),
+    ContainerVideo,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3167,4 +4173,8 @@ class $AppDatabaseManager {
       $$ChatSessionsTableTableManager(_db, _db.chatSessions);
   $$ChatMessagesTableTableManager get chatMessages =>
       $$ChatMessagesTableTableManager(_db, _db.chatMessages);
+  $$ContainersTableTableManager get containers =>
+      $$ContainersTableTableManager(_db, _db.containers);
+  $$ContainerVideosTableTableManager get containerVideos =>
+      $$ContainerVideosTableTableManager(_db, _db.containerVideos);
 }

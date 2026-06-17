@@ -7,6 +7,7 @@ import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/storage/backup_service.dart';
 import 'package:mikunotes/core/storage/database.dart' hide Video;
+import 'package:drift/drift.dart' show Value;
 import 'package:mikunotes/core/providers/video_repository.dart';
 
 const _secureStorage = FlutterSecureStorage();
@@ -225,3 +226,216 @@ final videoRepositoryProvider = Provider<VideoRepository>((ref) {
 final backupServiceProvider = Provider<BackupService>((ref) {
   return BackupService(ref.watch(databaseProvider));
 });
+
+// ─── 容器系统 (3 平行容器) ─────────────────────────────────────
+
+enum ContainerType { manual, favorite, watchLater }
+
+extension ContainerTypeX on ContainerType {
+  String get dbValue {
+    switch (this) {
+      case ContainerType.manual:
+        return 'manual';
+      case ContainerType.favorite:
+        return 'favorite';
+      case ContainerType.watchLater:
+        return 'watch_later';
+    }
+  }
+  String get displayName {
+    switch (this) {
+      case ContainerType.manual:
+        return '手动导入';
+      case ContainerType.favorite:
+        return '收藏夹';
+      case ContainerType.watchLater:
+        return '稍后观看';
+    }
+  }
+  static ContainerType fromDb(String v) {
+    switch (v) {
+      case 'favorite':
+        return ContainerType.favorite;
+      case 'watch_later':
+        return ContainerType.watchLater;
+      default:
+        return ContainerType.manual;
+    }
+  }
+}
+
+/// 容器信息 (UI 友好包装)
+class ContainerInfo {
+  final int id;
+  final ContainerType type;
+  final String? externalId;
+  final String name;
+  final int totalCount;
+  final int importedCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  ContainerInfo({
+    required this.id,
+    required this.type,
+    required this.externalId,
+    required this.name,
+    required this.totalCount,
+    required this.importedCount,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  double get progress => totalCount == 0 ? 0 : importedCount / totalCount;
+}
+
+/// 容器列表
+final containerListProvider =
+    StateNotifierProvider<ContainerListNotifier, AsyncValue<List<ContainerInfo>>>(
+  (ref) => ContainerListNotifier(ref),
+);
+
+class ContainerListNotifier extends StateNotifier<AsyncValue<List<ContainerInfo>>> {
+  ContainerListNotifier(this._ref) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+
+  Future<void> load() async {
+    try {
+      final db = _ref.read(databaseProvider);
+      final containers = await db.getAllContainers();
+      final result = <ContainerInfo>[];
+      for (final c in containers) {
+        final imported = await db.countVideosInContainer(c.id);
+        result.add(ContainerInfo(
+          id: c.id,
+          type: ContainerTypeX.fromDb(c.type),
+          externalId: c.externalId,
+          name: c.name,
+          totalCount: c.totalCount,
+          importedCount: imported,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        ));
+      }
+      state = AsyncValue.data(result);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  /// 同步 B 站收藏夹列表 (从 API 拉 → 写入 DB)
+  Future<void> syncFavFolders() async {
+    final bili = _ref.read(bilibiliClientProvider);
+    if (!bili.isLoggedIn) {
+      throw Exception('未登录 B 站');
+    }
+    final biliFolders = await bili.getFavFolders();
+    final db = _ref.read(databaseProvider);
+    for (final f in biliFolders) {
+      final fid = f['id']?.toString();
+      if (fid == null) continue;
+      final existing = await db.getContainerByExternalId(fid);
+      final name = f['title'] as String? ?? '未命名';
+      final total = (f['media_count'] as num?)?.toInt() ?? 0;
+      if (existing == null) {
+        await db.insertContainer(ContainersCompanion.insert(
+          type: 'favorite',
+          externalId: Value(fid),
+          name: name,
+          totalCount: Value(total),
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ));
+      } else {
+        // 更新名称和总数
+        await db.updateContainer(existing.id, ContainersCompanion(
+          name: Value(name),
+          totalCount: Value(total),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+    }
+    await load();
+  }
+
+  /// 创建/同步稍后观看容器
+  Future<void> syncWatchLater() async {
+    final bili = _ref.read(bilibiliClientProvider);
+    if (!bili.isLoggedIn) {
+      throw Exception('未登录 B 站');
+    }
+    final db = _ref.read(databaseProvider);
+    final bvids = await bili.getWatchLaterBvids();
+    // 确保 watch_later 容器存在
+    final existing = await (db.select(db.containers)
+          ..where((c) => c.type.equals('watch_later')))
+        .getSingleOrNull();
+    int containerId;
+    if (existing == null) {
+      containerId = await db.insertContainer(ContainersCompanion.insert(
+        type: 'watch_later',
+        name: '稍后观看',
+        totalCount: Value(bvids.length),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ));
+    } else {
+      containerId = existing.id;
+      await db.updateContainer(containerId, ContainersCompanion(
+        totalCount: Value(bvids.length),
+        updatedAt: Value(DateTime.now()),
+      ));
+    }
+    await load();
+  }
+
+  Future<void> deleteContainer(int id) async {
+    final db = _ref.read(databaseProvider);
+    await db.deleteContainer(id);
+    await load();
+  }
+}
+
+/// 指定容器内的视频列表
+final videosInContainerProvider = StateNotifierProvider.family<
+    VideosInContainerNotifier, AsyncValue<List<model.Video>>, int>(
+  (ref, containerId) => VideosInContainerNotifier(ref, containerId),
+);
+
+class VideosInContainerNotifier
+    extends StateNotifier<AsyncValue<List<model.Video>>> {
+  VideosInContainerNotifier(this._ref, this.containerId)
+      : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+  final int containerId;
+
+  Future<void> load() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = _ref.read(databaseProvider);
+      final dbVideos = await db.getVideosInContainer(containerId);
+      // 转为 model.Video
+      final videos = dbVideos
+          .map((v) => model.Video(
+                id: v.bvid,
+                bvid: v.bvid,
+                title: v.title,
+                coverUrl: v.coverUrl,
+                uploader: v.uploader,
+                duration: v.duration,
+                pageCount: v.pageCount,
+                addedAt: v.addedAt,
+                tags: v.tags.isEmpty ? [] : v.tags.split(','),
+              ))
+          .toList();
+      videos.sort((a, b) => b.addedAt.compareTo(a.addedAt));
+      state = AsyncValue.data(videos);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}

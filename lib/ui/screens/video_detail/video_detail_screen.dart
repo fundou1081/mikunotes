@@ -13,7 +13,7 @@ import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
-import 'package:mikunotes/core/storage/database.dart';
+import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -58,10 +58,10 @@ class VideoDetailScreen extends ConsumerStatefulWidget {
 class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     with SingleTickerProviderStateMixin {
   VideoSubtitle? _subtitle;
-  List<Subtitle> _allSubtitles = [];
+  List<db.Subtitle> _allSubtitles = [];
   String? _selectedLang;
   bool _loadingSubtitle = true;
-  int _subtitleTabKey = 0; // 用于强制重建 Subtitle Tab
+  int _subtitleTabKey = 0; // 用于强制重建 db.Subtitle Tab
 
   @override
   void initState() {
@@ -716,8 +716,8 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
-  ChatSession? _currentSession;
-  List<ChatMessage> _messages = [];
+  db.ChatSession? _currentSession;
+  List<db.ChatMessage> _messages = [];
   String _streamingContent = '';
   bool _streaming = false;
   int _messageIndex = 0;
@@ -746,7 +746,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     }
   }
 
-  Future<void> _switchToSession(ChatSession s) async {
+  Future<void> _switchToSession(db.ChatSession s) async {
     final repo = ref.read(videoRepositoryProvider);
     final msgs = await repo.getChatMessages(s.id);
     final totalChars = msgs.fold(0, (sum, m) => sum + m.content.length);
@@ -860,7 +860,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       content: text,
     );
 
-    final newUserMsg = ChatMessage(
+    final newUserMsg = db.ChatMessage(
       id: _uuid.v4(),
       sessionId: session.id,
       role: 'user',
@@ -1091,9 +1091,9 @@ class _SessionBar extends StatelessWidget {
 class _SessionListSheet extends ConsumerWidget {
   final String bvid;
   final String? currentId;
-  final Function(ChatSession) onSelect;
-  final Function(ChatSession) onDelete;
-  final Function(ChatSession) onRename;
+  final Function(db.ChatSession) onSelect;
+  final Function(db.ChatSession) onDelete;
+  final Function(db.ChatSession) onRename;
   const _SessionListSheet({
     required this.bvid,
     required this.currentId,
@@ -1110,7 +1110,7 @@ class _SessionListSheet extends ConsumerWidget {
       minChildSize: 0.3,
       expand: false,
       builder: (ctx, scrollController) {
-        return FutureBuilder<List<ChatSession>>(
+        return FutureBuilder<List<db.ChatSession>>(
           future: ref.read(videoRepositoryProvider).getChatSessions(bvid),
           builder: (ctx, snap) {
             final items = snap.data ?? [];
@@ -1234,7 +1234,7 @@ class _ChatBubble extends StatelessWidget {
 
 class _SubtitleTab extends ConsumerStatefulWidget {
   final String bvid;
-  final List<Subtitle> allSubtitles;
+  final List<db.Subtitle> allSubtitles;
   final String? selectedLang;
   final bool loading;
   final ValueChanged<String> onLanguageChanged;

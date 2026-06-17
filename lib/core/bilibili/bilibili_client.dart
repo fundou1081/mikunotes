@@ -331,4 +331,104 @@ class BilibiliClient {
       }
     }
   }
+
+  // ─── 收藏夹 API ──────────────────────────────────────────────
+
+  /// 获取用户创建的所有收藏夹
+  /// 返回 [{id, name, media_count, ...}]
+  Future<List<Map<String, dynamic>>> getFavFolders() async {
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/v3/fav/folder/created/list-all',
+      queryParameters: {
+        'up_mid': _user?.mid ?? 0,
+        'jsonp': 'jsonp',
+      },
+    );
+    final data = resp.data?['data'];
+    if (data is! Map || data['list'] is! List) {
+      return [];
+    }
+    return (data['list'] as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  /// 获取收藏夹中的视频
+  /// fid: 收藏夹 ID
+  /// pn: 页码 (从 1 开始)
+  /// ps: 每页条数 (最大 20)
+  /// 返回 {medias: [...], info: {media_count, ...}, has_more: bool}
+  Future<Map<String, dynamic>> getFavVideos(int fid, {int pn = 1, int ps = 20}) async {
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/v3/fav/resource/ids',
+      queryParameters: {
+        'media_id': fid,
+        'pn': pn,
+        'ps': ps,
+      },
+    );
+    final data = resp.data?['data'];
+    if (data is! Map) {
+      return {'medias': [], 'info': {}, 'has_more': false};
+    }
+    final ids = (data['data'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final hasMore = (data['has_more'] as bool?) ?? false;
+    return {
+      'medias': ids,
+      'has_more': hasMore,
+      'total': data['info']?['media_count'] ?? 0,
+    };
+  }
+
+  /// 获取指定收藏夹的所有视频 (最多 maxVideos 个)
+  /// 返回 BV 号列表
+  Future<List<String>> getAllFavBvids(int fid, {int maxVideos = 2000}) async {
+    final bvids = <String>[];
+    int pn = 1;
+    while (bvids.length < maxVideos) {
+      final result = await getFavVideos(fid, pn: pn, ps: 20);
+      final medias = result['medias'] as List;
+      if (medias.isEmpty) break;
+      for (final m in medias) {
+        final bvid = m['bvid'] as String?;
+        if (bvid != null && bvid.isNotEmpty) {
+          bvids.add(bvid);
+        }
+      }
+      if (!(result['has_more'] as bool)) break;
+      pn++;
+      if (pn > 100) break; // safety
+    }
+    return bvids;
+  }
+
+  // ─── 稍后观看 API ──────────────────────────────────────────────
+
+  /// 获取 B站 稍后观看 列表
+  /// 返回 BV 号列表
+  Future<List<String>> getWatchLaterBvids({int maxPages = 50}) async {
+    final bvids = <String>[];
+    for (int pn = 1; pn <= maxPages; pn++) {
+      try {
+        final resp = await _dio.get(
+          'https://api.bilibili.com/x/v2/history/toview',
+          queryParameters: {'pn': pn, 'ps': 20},
+        );
+        final list = resp.data?['data']?['list'];
+        if (list is! List || list.isEmpty) break;
+        for (final item in list) {
+          final bvid = item['bvid'] as String?;
+          if (bvid != null && bvid.isNotEmpty) {
+            bvids.add(bvid);
+          }
+        }
+        if (list.length < 20) break;
+      } catch (_) {
+        break;
+      }
+    }
+    return bvids;
+  }
 }
