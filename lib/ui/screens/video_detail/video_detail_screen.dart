@@ -63,6 +63,8 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
   String? _selectedLang;
   bool _loadingSubtitle = true;
   int _subtitleTabKey = 0; // 用于强制重建 db.Subtitle Tab
+  int _pageCount = 1;
+  int _selectedPage = 1; // 0 = 整体, 1+ = 第N部分
 
   @override
   void initState() {
@@ -77,12 +79,18 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     if (all.isNotEmpty) {
       sub = await repo.getSubtitle(widget.bvid);
     }
+    // 加载视频组信息 (pageCount 等)
+    final group = await ref.read(databaseProvider).getVideoGroup(widget.bvid);
     if (!mounted) return;
     setState(() {
       _allSubtitles = all;
       _subtitle = sub;
       _selectedLang = sub?.language ?? (all.isNotEmpty ? all.first.language : null);
       _loadingSubtitle = false;
+      if (group != null) {
+        _pageCount = group.pageCount;
+        if (_selectedPage < 1 || _selectedPage > _pageCount) _selectedPage = 1;
+      }
     });
   }
 
@@ -119,8 +127,24 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             Tab(text: '字幕', icon: Icon(Icons.subtitles)),
           ]),
         ),
-        body: TabBarView(children: [
-          _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll),
+        body: Column(
+          children: [
+            // 分P 选择器 (只有多P才显示)
+            if (_pageCount > 1)
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  children: [
+                    _pageChip('整体', 0),
+                    for (int p = 1; p <= _pageCount; p++) _pageChip('P$p', p),
+                  ],
+                ),
+              ),
+            Expanded(
+            child: TabBarView(children: [
+          _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll, selectedPage: _selectedPage, pageCount: _pageCount),
           _ChatTab(bvid: widget.bvid, subtitle: _subtitle),
           _SubtitleTab(
             key: ValueKey(_subtitleTabKey),
@@ -137,6 +161,9 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             },
           ),
         ]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -161,6 +188,25 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         setState(() => _loadingSubtitle = false);
       }
     }
+  }
+
+  Widget _pageChip(String label, int page) {
+    final selected = _selectedPage == page;
+    return FilterChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      selected: selected,
+      onSelected: (_) {
+        setState(() => _selectedPage = page);
+        if (page == 0) {
+          // 整体: 加载所有P字幕
+          _loadSubtitleForLang(_selectedLang ?? 'zh');
+        } else {
+          _loadSubtitleForLang(_selectedLang ?? 'zh');
+        }
+      },
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
   }
 
   Future<void> _showCommentAnalysis() async {
@@ -261,10 +307,14 @@ class _SummaryTab extends ConsumerStatefulWidget {
   final String bvid;
   final VideoSubtitle? subtitle;
   final VoidCallback onChanged;
+  final int selectedPage;
+  final int pageCount;
   const _SummaryTab({
     required this.bvid,
     required this.subtitle,
     required this.onChanged,
+    this.selectedPage = 1,
+    this.pageCount = 1,
   });
 
   @override
@@ -427,8 +477,8 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
           );
         }
 
-        // 正在后台生成
-        if (genState != null && genState.isRunning) {
+        // 正在后台生成 (或刚完成 2 秒内, 保持 streaming view 避免空状念闪哾)
+        if (genState != null && (genState.isRunning || genState.isCompleted)) {
           return Column(
             children: [
               const LinearProgressIndicator(),
@@ -444,9 +494,16 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: FilledButton.tonalIcon(
-                  onPressed: () => ref.read(generationProvider.notifier).cancel(widget.bvid),
-                  icon: const Icon(Icons.stop),
-                  label: const Text('停止生成'),
+                  onPressed: () {
+                    if (genState!.isCompleted) {
+                      // 已完成 → 立即跳到总结视图
+                      ref.read(generationProvider.notifier).clear(widget.bvid);
+                    } else {
+                      ref.read(generationProvider.notifier).cancel(widget.bvid);
+                    }
+                  },
+                  icon: Icon(genState!.isCompleted ? Icons.check : Icons.stop),
+                  label: Text(genState!.isCompleted ? '查看总结' : '停止生成'),
                 ),
               ),
             ],

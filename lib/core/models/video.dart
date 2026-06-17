@@ -1,6 +1,6 @@
 class Video {
-  final String id;
   final String bvid;
+  final int page; // 分P (1-based, 整体时为 0, 单 P 为 1)
   final String title;
   final String coverUrl;
   final String uploader;
@@ -11,8 +11,8 @@ class Video {
   final List<String> aiTags;
 
   const Video({
-    required this.id,
     required this.bvid,
+    this.page = 1,
     required this.title,
     this.coverUrl = '',
     this.uploader = '',
@@ -23,7 +23,7 @@ class Video {
     this.aiTags = const [],
   });
 
-  /// Merged: original + AI tags (deduped)
+  /// Merged: 原始 + AI tag (去重)
   List<String> get allTags {
     final merged = <String>[...tags];
     for (final t in aiTags) {
@@ -32,9 +32,12 @@ class Video {
     return merged;
   }
 
+  /// 是否为多 P 视频
+  bool get isMultiPart => pageCount > 1;
+
   Video copyWith({
-    String? id,
     String? bvid,
+    int? page,
     String? title,
     String? coverUrl,
     String? uploader,
@@ -45,8 +48,8 @@ class Video {
     List<String>? aiTags,
   }) =>
       Video(
-        id: id ?? this.id,
         bvid: bvid ?? this.bvid,
+        page: page ?? this.page,
         title: title ?? this.title,
         coverUrl: coverUrl ?? this.coverUrl,
         uploader: uploader ?? this.uploader,

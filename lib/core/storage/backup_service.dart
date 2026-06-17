@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart' show Value;
-import 'package:mikunotes/core/storage/database.dart';
+import 'package:mikunotes/core/storage/database.dart' hide Video;
 import 'package:path_provider/path_provider.dart';
 
 /// 备份/恢复服务 — 数据导出到用户可访问目录，重装不丢失
@@ -62,7 +62,7 @@ class BackupService {
       for (final s in subs) {
         allSubtitles.add({
           'bvid': s.bvid,
-          'pageNum': s.pageNum,
+          'pageNum': s.page,
           'language': s.language,
           'rawJson': s.rawJson,
           'plainText': s.plainText,
@@ -122,14 +122,10 @@ class BackupService {
       'videos': videos
           .map((v) => {
                 'bvid': v.bvid,
-                'title': v.title,
-                'coverUrl': v.coverUrl,
-                'uploader': v.uploader,
+                'page': v.page,
                 'aid': v.aid,
                 'duration': v.duration,
-                'pageCount': v.pageCount,
                 'addedAt': v.addedAt.toIso8601String(),
-                'tags': v.tags,
               })
           .toList(),
       'subtitles': allSubtitles,
@@ -166,20 +162,34 @@ class BackupService {
       int sessionCount = 0;
       int messageCount = 0;
 
-      // 恢复视频
+      // 恢复视频 (video_groups + videos)
       final videos = backup['videos'] as List? ?? [];
       for (final v in videos.cast<Map<String, dynamic>>()) {
         try {
-          await _db.upsertVideo(VideosCompanion.insert(
-            bvid: v['bvid'] as String,
-            title: v['title'] as String,
-            aid: (v['aid'] as num).toInt(),
-            addedAt: DateTime.parse(v['addedAt'] as String),
-            coverUrl: Value((v['coverUrl'] as String?) ?? ''),
+          final bvid = v['bvid'] as String;
+          final addedAt = DateTime.parse(v['addedAt'] as String);
+          final aid = (v['aid'] as num).toInt();
+          final duration = (v['duration'] as num?)?.toInt() ?? 0;
+          final page = (v['page'] as num?)?.toInt() ?? 1;
+
+          // Insert video_group (backward compat: old backups have title/cover etc.)
+          await _db.insertVideoGroup(VideoGroupsCompanion.insert(
+            bvid: bvid,
+            title: (v['title'] as String?) ?? bvid,
+            cover: Value((v['coverUrl'] as String?) ?? ''),
             uploader: Value((v['uploader'] as String?) ?? ''),
-            duration: Value((v['duration'] as num?)?.toInt() ?? 0),
+            totalDuration: Value(duration),
             pageCount: Value((v['pageCount'] as num?)?.toInt() ?? 1),
-            tags: Value((v['tags'] as String?) ?? ''),
+            addedAt: addedAt,
+          ));
+          // Insert video (page=1 for old backups)
+          await _db.upsertVideo(VideosCompanion.insert(
+            bvid: bvid,
+            page: page,
+            aid: aid,
+            cid: Value(0),
+            duration: Value(duration),
+            addedAt: addedAt,
           ));
           videoCount++;
         } catch (_) {}
@@ -192,7 +202,7 @@ class BackupService {
           await _db.upsertSubtitle(SubtitlesCompanion(
             id: const Value.absent(),
             bvid: Value(s['bvid'] as String),
-            pageNum: Value((s['pageNum'] as num?)?.toInt() ?? 1),
+            page: Value((s['pageNum'] as num?)?.toInt() ?? 1),
             language: Value(s['language'] as String),
             rawJson: Value(s['rawJson'] as String),
             plainText: Value(s['plainText'] as String),

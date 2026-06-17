@@ -6,7 +6,8 @@ import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/storage/backup_service.dart';
-import 'package:mikunotes/core/storage/database.dart' hide Video;
+
+import 'package:mikunotes/core/storage/database.dart' hide Video, VideoGroup;
 import 'package:drift/drift.dart' show Value;
 import 'package:mikunotes/core/providers/video_repository.dart';
 
@@ -22,9 +23,9 @@ const _kAiProvider = 'ai_provider';
 // ─── 数据库 ─────────────────────────────────────────────────────
 
 final databaseProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
-  ref.onDispose(db.close);
-  return db;
+  final d = AppDatabase();
+  ref.onDispose(d.close);
+  return d;
 });
 
 // ─── AI 配置 ────────────────────────────────────────────────────
@@ -229,6 +230,39 @@ final backupServiceProvider = Provider<BackupService>((ref) {
 
 // ─── 容器系统 (3 平行容器) ─────────────────────────────────────
 
+/// 把 drift 的 (Video + VideoGroup) 拼装成 model.Video
+model.Video _videoFromGroup(dynamic v, dynamic g) {
+  return model.Video(
+    bvid: v.bvid as String,
+    page: v.page as int,
+    title: (v.partTitle as String).isNotEmpty ? v.partTitle : (g.title as String),
+    coverUrl: (v.partCover as String).isNotEmpty ? v.partCover : (g.cover as String),
+    uploader: g.uploader as String,
+    duration: v.duration as int,
+    pageCount: g.pageCount as int,
+    addedAt: v.addedAt as DateTime,
+    tags: (g.tags as String).isEmpty ? const [] : (g.tags as String).split(','),
+    aiTags: (g.aiTags as String).isEmpty ? const [] : (g.aiTags as String).split(','),
+  );
+}
+
+/// 异步把 db.Video 列表转 model.Video 列表 (需要 JOIN video_groups)
+Future<List<model.Video>> _joinVideosWithGroups(
+  List<dynamic> dbVideos,
+  Future<dynamic?> Function(String bvid) getGroup,
+) async {
+  final result = <model.Video>[];
+  final groupCache = <String, dynamic>{};
+  for (final v in dbVideos) {
+    var g = groupCache[v.bvid];
+    g ??= await getGroup(v.bvid);
+    if (g == null) continue; // 没有 group 跳过 (理论上不会)
+    groupCache[v.bvid] = g;
+    result.add(_videoFromGroup(v, g));
+  }
+  return result;
+}
+
 enum ContainerType { manual, favorite, watchLater, upmaster }
 
 extension ContainerTypeX on ContainerType {
@@ -424,20 +458,10 @@ class VideosInContainerNotifier
     try {
       final db = _ref.read(databaseProvider);
       final dbVideos = await db.getVideosInContainer(containerId);
-      // 转为 model.Video
-      final videos = dbVideos
-          .map((v) => model.Video(
-                id: v.bvid,
-                bvid: v.bvid,
-                title: v.title,
-                coverUrl: v.coverUrl,
-                uploader: v.uploader,
-                duration: v.duration,
-                pageCount: v.pageCount,
-                addedAt: v.addedAt,
-                tags: v.tags.isEmpty ? [] : v.tags.split(','),
-              ))
-          .toList();
+      // 转为 model.Video (含 JOIN video_groups)
+      final videos = await _joinVideosWithGroups(
+        dbVideos, (bvid) => db.getVideoGroup(bvid),
+      );
       videos.sort((a, b) => b.addedAt.compareTo(a.addedAt));
       state = AsyncValue.data(videos);
     } catch (e, st) {
@@ -476,20 +500,9 @@ class AllFavoriteVideosNotifier
       final allVideos =
           await (db.select(db.videos)..where((v) => v.bvid.isIn(allBvids.toList())))
               .get();
-      final result = allVideos
-          .map((v) => model.Video(
-                id: v.bvid,
-                bvid: v.bvid,
-                title: v.title,
-                coverUrl: v.coverUrl,
-                uploader: v.uploader,
-                duration: v.duration,
-                pageCount: v.pageCount,
-                addedAt: v.addedAt,
-                tags: v.tags.isEmpty ? [] : v.tags.split(','),
-                aiTags: v.aiTags.isEmpty ? [] : v.aiTags.split(','),
-              ))
-          .toList();
+      final result = await _joinVideosWithGroups(
+        allVideos, (bvid) => db.getVideoGroup(bvid),
+      );
       result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
       state = AsyncValue.data(result);
     } catch (e, st) {
@@ -592,20 +605,9 @@ class AllUpMasterVideosNotifier
       final allVideos =
           await (db.select(db.videos)..where((v) => v.bvid.isIn(allBvids.toList())))
               .get();
-      final result = allVideos
-          .map((v) => model.Video(
-                id: v.bvid,
-                bvid: v.bvid,
-                title: v.title,
-                coverUrl: v.coverUrl,
-                uploader: v.uploader,
-                duration: v.duration,
-                pageCount: v.pageCount,
-                addedAt: v.addedAt,
-                tags: v.tags.isEmpty ? [] : v.tags.split(','),
-                aiTags: v.aiTags.isEmpty ? [] : v.aiTags.split(','),
-              ))
-          .toList();
+      final result = await _joinVideosWithGroups(
+        allVideos, (bvid) => db.getVideoGroup(bvid),
+      );
       result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
       state = AsyncValue.data(result);
     } catch (e, st) {

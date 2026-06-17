@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/providers/providers.dart';
-import 'package:mikunotes/core/storage/database.dart' as db;
+import 'package:mikunotes/core/storage/database.dart' as db hide Container;
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:mikunotes/ui/screens/containers/undo_snackbar.dart';
 import 'package:mikunotes/ui/screens/containers/video_list.dart';
@@ -231,21 +231,20 @@ class FavoriteFolderScreen extends ConsumerWidget {
         // 恢复视频
         await db1.upsertVideo(db.VideosCompanion.insert(
           bvid: video.bvid,
-          title: video.title,
-          coverUrl: drift.Value(video.coverUrl),
-          uploader: drift.Value(video.uploader),
+          page: 1,
           aid: video.aid,
+          cid: drift.Value(0),
+          partName: drift.Value(''),
+          partTitle: drift.Value(''),
+          partCover: drift.Value(''),
           duration: drift.Value(video.duration),
-          pageCount: drift.Value(video.pageCount),
           addedAt: video.addedAt,
-          tags: drift.Value(video.tags),
-          aiTags: drift.Value(video.aiTags),
         ));
         // 恢复字幕
         for (final s in subs) {
           await db1.upsertSubtitle(db.SubtitlesCompanion.insert(
             bvid: s.bvid,
-            pageNum: drift.Value(s.pageNum),
+            page: drift.Value(s.page),
             language: s.language,
             rawJson: s.rawJson,
             plainText: s.plainText,

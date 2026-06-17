@@ -9,7 +9,7 @@ import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/models/video.dart' as video_model;
 import 'package:mikunotes/core/providers/providers.dart';
-import 'package:mikunotes/core/storage/database.dart';
+import 'package:mikunotes/core/storage/database.dart' hide Video;
 import 'package:mikunotes/core/subtitle/subtitle_parser.dart';
 import 'package:uuid/uuid.dart';
 
@@ -55,28 +55,32 @@ class VideoRepository {
     final upFace = (info['owner'] as Map?)?['face'] as String? ?? '';
     final duration = (info['duration'] as num?)?.toInt() ?? 0;
     final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
+    final pageCount = pages.length == 0 ? 1 : pages.length;
 
-    final video = video_model.Video(
-      id: bvid,
+    // 1. 插入/更新 video_group
+    final now = DateTime.now();
+    await _db.insertVideoGroup(VideoGroupsCompanion.insert(
       bvid: bvid,
       title: title,
-      coverUrl: cover,
-      uploader: uploader,
-      duration: duration,
-      pageCount: pages.length,
-      addedAt: DateTime.now(),
-    );
-
-    await _db.upsertVideo(VideosCompanion.insert(
-      bvid: video.bvid,
-      title: video.title,
-      coverUrl: drift.Value(video.coverUrl),
-      uploader: drift.Value(video.uploader),
+      cover: drift.Value(cover),
+      uploader: drift.Value(uploader),
       upMid: drift.Value(upMid),
+      upFace: drift.Value(upFace),
+      totalDuration: drift.Value(duration),
+      pageCount: drift.Value(pageCount),
+      addedAt: now,
+    ));
+    // 2. 插入/更新 video (page=1)
+    await _db.upsertVideo(VideosCompanion.insert(
+      bvid: bvid,
+      page: 1,
       aid: aid,
-      duration: drift.Value(video.duration),
-      pageCount: drift.Value(video.pageCount),
-      addedAt: video.addedAt,
+      cid: drift.Value(0),
+      partName: drift.Value(''),
+      partTitle: drift.Value(''),
+      partCover: drift.Value(''),
+      duration: drift.Value(duration),
+      addedAt: now,
     ));
 
     // 创建/查找 UP 主容器, 关联到视频
@@ -86,7 +90,7 @@ class VideoRepository {
           uid: upMid, name: uploader, face: upFace,
         );
         await _db.addVideoToUpMasterContainer(
-          upMasterId: um.id, bvid: bvid, addedAt: video.addedAt,
+          upMasterId: um.id, bvid: bvid, addedAt: now,
         );
       } catch (_) {
         // UP 主容器创建失败不影响主流程
@@ -102,6 +106,16 @@ class VideoRepository {
       }
     }
 
+    final video = video_model.Video(
+      bvid: bvid,
+      page: 1,
+      title: title,
+      coverUrl: cover,
+      uploader: uploader,
+      duration: duration,
+      pageCount: pageCount,
+      addedAt: now,
+    );
     return video;
   }
 
@@ -138,7 +152,7 @@ class VideoRepository {
         await _db.upsertSubtitle(SubtitlesCompanion(
           id: const drift.Value.absent(),
           bvid: drift.Value(bvid),
-          pageNum: drift.Value(1),
+          page: drift.Value(1),
           language: drift.Value(lan),
           rawJson: drift.Value(rawBody),
           plainText: drift.Value(plainText),
@@ -229,24 +243,25 @@ class VideoRepository {
 
   Future<List<video_model.Video>> getAllVideos() async {
     final rows = await _db.getAllVideos();
-    return rows
-        .map((r) => video_model.Video(
-              id: r.bvid,
-              bvid: r.bvid,
-              title: r.title,
-              coverUrl: r.coverUrl,
-              uploader: r.uploader,
-              duration: r.duration,
-              pageCount: r.pageCount,
-              addedAt: r.addedAt,
-              tags: r.tags.isEmpty
-                  ? const []
-                  : r.tags.split(',').map((t) => t.trim()).toList(),
-              aiTags: r.aiTags.isEmpty
-                  ? const []
-                  : r.aiTags.split(',').map((t) => t.trim()).toList(),
-            ))
-        .toList();
+    final result = <video_model.Video>[];
+    for (final v in rows) {
+      final g = await _db.getVideoGroup(v.bvid);
+      if (g == null) continue;
+      result.add(video_model.Video(
+        bvid: v.bvid,
+        page: v.page,
+        title: v.partTitle.isNotEmpty ? v.partTitle : g.title,
+        coverUrl: v.partCover.isNotEmpty ? v.partCover : g.cover,
+        uploader: g.uploader,
+        duration: v.duration,
+        pageCount: g.pageCount,
+        addedAt: v.addedAt,
+        tags: g.tags.isEmpty ? const [] : g.tags.split(',').map((t) => t.trim()).toList(),
+        aiTags: g.aiTags.isEmpty ? const [] : g.aiTags.split(',').map((t) => t.trim()).toList(),
+      ));
+    }
+    result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
+    return result;
   }
 
   Future<void> deleteVideo(String bvid) => _db.deleteVideo(bvid);
@@ -562,19 +577,23 @@ class VideoRepository {
           final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
           await _db.upsertVideo(VideosCompanion.insert(
             bvid: bvid,
-            title: title,
-            coverUrl: drift.Value(cover),
-            uploader: drift.Value(uploader),
-            upMid: drift.Value(upMid),
-            aid: aid,
+            page: 1,
+      aid: aid,
+            cid: drift.Value(0),
+            partName: drift.Value(''),
+            partTitle: drift.Value(''),
+            partCover: drift.Value(''),
             duration: drift.Value(duration),
-            pageCount: drift.Value(pages.length),
             addedAt: DateTime.now(),
           ));
         } else {
-          upMid = existing.upMid;
-          upName = existing.uploader;
           alreadyInDb.add(bvid);
+          // Get UP info from video_group
+          final g = await _db.getVideoGroup(bvid);
+          if (g != null) {
+            upMid = g.upMid;
+            upName = g.uploader;
+          }
         }
         // 创建/查找 UP 主容器, 关联到视频
         if (upMid > 0) {

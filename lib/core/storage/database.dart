@@ -6,22 +6,40 @@ import 'package:path_provider/path_provider.dart';
 
 part 'database.g.dart';
 
-/// 视频表
-class Videos extends Table {
+/// 视频组表 (B站一个视频 = 一个视频组)
+/// 所有"视频元信息" (标题/封面/UP主/标签) 都在这里
+class VideoGroups extends Table {
   TextColumn get bvid => text()();
   TextColumn get title => text()();
-  TextColumn get coverUrl => text().withDefault(const Constant(''))();
+  TextColumn get cover => text().withDefault(const Constant(''))();
   TextColumn get uploader => text().withDefault(const Constant(''))();
-  IntColumn get upMid => integer().withDefault(const Constant(0))(); // B站 UP主 mid
-  IntColumn get aid => integer()();
-  IntColumn get duration => integer().withDefault(const Constant(0))();
+  IntColumn get upMid => integer().withDefault(const Constant(0))();
+  TextColumn get upFace => text().withDefault(const Constant(''))();
+  IntColumn get totalDuration => integer().withDefault(const Constant(0))(); // 所有 P 累计时长
   IntColumn get pageCount => integer().withDefault(const Constant(1))();
+  TextColumn get pageNamesJson => text().withDefault(const Constant('[]'))(); // JSON 列表
   DateTimeColumn get addedAt => dateTime()();
   TextColumn get tags => text().withDefault(const Constant(''))();
   TextColumn get aiTags => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {bvid};
+}
+
+/// 分P表 (一个视频组至少有 1 个 P, 多 P 时有多行)
+class Videos extends Table {
+  TextColumn get bvid => text()();
+  IntColumn get page => integer()();
+  IntColumn get aid => integer()();
+  IntColumn get cid => integer().withDefault(const Constant(0))(); // 字幕 cid (P 唯一)
+  TextColumn get partName => text().withDefault(const Constant(''))(); // B站返回的 part 名称
+  TextColumn get partTitle => text().withDefault(const Constant(''))(); // 该 P 单独标题
+  TextColumn get partCover => text().withDefault(const Constant(''))(); // 该 P 单独封面
+  IntColumn get duration => integer().withDefault(const Constant(0))();
+  DateTimeColumn get addedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {bvid, page};
 }
 
 /// UP主表 (跟踪关注的 UP 主 + 关联到容器)
@@ -36,11 +54,11 @@ class UpMasters extends Table {
   DateTimeColumn get addedAt => dateTime()();
 }
 
-/// 字幕表 (一个视频可有多语言)
+/// 字幕表 (一个视频某个 P 可有多语言)
 class Subtitles extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get bvid => text()();
-  IntColumn get pageNum => integer().withDefault(const Constant(1))();
+  IntColumn get page => integer().withDefault(const Constant(1))();
   TextColumn get language => text()();
   TextColumn get rawJson => text()();
   TextColumn get plainText => text()();
@@ -50,14 +68,15 @@ class Subtitles extends Table {
 
   @override
   List<Set<Column>> get uniqueKeys => [
-        {bvid, pageNum, language}
+        {bvid, page, language}
       ];
 }
 
-/// 总结表
+/// 总结表 (按 (bvid, page) 关联, page=0 表示整体总结)
 class Summaries extends Table {
   TextColumn get id => text()();
   TextColumn get bvid => text()();
+  IntColumn get page => integer().withDefault(const Constant(0))(); // 0=整体, 1+第N部分
   TextColumn get title => text().withDefault(const Constant(''))();
   TextColumn get type => text()();
   TextColumn get content => text()();
@@ -115,14 +134,14 @@ class ContainerVideos extends Table {
 }
 
 @DriftDatabase(
-  tables: [Videos, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos, UpMasters],
+  tables: [VideoGroups, Videos, UpMasters, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -140,8 +159,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(chatMessages, chatMessages.isCompressed);
           }
           if (from < 3) {
-            // v3: 加 aiTags 字段到 Videos
-            await m.addColumn(videos, videos.aiTags);
+            // v3: 加 aiTags 字段到 Videos (列已移除, 用 raw SQL)
+            await customStatement(
+                'ALTER TABLE videos ADD COLUMN ai_tags TEXT NOT NULL DEFAULT ""');
           }
           if (from < 4) {
             // v4: 加 containers + container_videos 表, 迁移老视频到 manual 容器
@@ -151,30 +171,91 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 5) {
             // v5: 加 upmasters 表 + videos.upMid 列
-            await m.addColumn(videos, videos.upMid);
+            // upMid 列已从 Videos 表移除, 用 raw SQL
+            await customStatement(
+                'ALTER TABLE videos ADD COLUMN up_mid INTEGER NOT NULL DEFAULT 0');
             await m.createTable(upMasters);
+          }
+          if (from < 6) {
+            // v6: 视频组分P 改造
+            // 1. 创建 video_groups 表
+            await m.createTable(videoGroups);
+            // 2. 老 videos 表重命名 (保留数据)
+            await customStatement('ALTER TABLE videos RENAME TO _videos_v5');
+            // 3. 创建新 videos 表 (复合主键 bvid+page)
+            await customStatement('''
+              CREATE TABLE videos (
+                bvid TEXT NOT NULL,
+                page INTEGER NOT NULL,
+                aid INTEGER NOT NULL,
+                cid INTEGER NOT NULL DEFAULT 0,
+                part_name TEXT NOT NULL DEFAULT '',
+                part_title TEXT NOT NULL DEFAULT '',
+                part_cover TEXT NOT NULL DEFAULT '',
+                duration INTEGER NOT NULL DEFAULT 0,
+                added_at INTEGER NOT NULL,
+                PRIMARY KEY (bvid, page)
+              )
+            ''');
+            // 4. 从老数据迁移到 video_groups + 新 videos
+            await customStatement('''
+              INSERT INTO video_groups (bvid, title, cover, uploader, up_mid, up_face,
+                                        total_duration, page_count, page_names_json,
+                                        added_at, tags, ai_tags)
+              SELECT bvid, title, cover_url, uploader, up_mid, '',
+                     duration, page_count, '[]', added_at, tags, ai_tags
+              FROM _videos_v5
+            ''');
+            await customStatement('''
+              INSERT INTO videos (bvid, page, aid, cid, part_name, part_title,
+                                  part_cover, duration, added_at)
+              SELECT bvid, 1, aid, 0, '', title, cover_url, duration, added_at
+              FROM _videos_v5
+            ''');
+            // 5. subtitles: pageNum -> page 重命名
+            await customStatement('ALTER TABLE subtitles RENAME COLUMN page_num TO page');
+            // 6. summaries: 加 page 列
+            await customStatement('ALTER TABLE summaries ADD COLUMN page INTEGER NOT NULL DEFAULT 0');
+            // 7. 删除老表
+            await customStatement('DROP TABLE _videos_v5');
           }
         },
       );
 
+  /// 获取视频组
+  Future<VideoGroup?> getVideoGroup(String bvid) =>
+      (select(videoGroups)..where((g) => g.bvid.equals(bvid))).getSingleOrNull();
+
+  /// 获取所有视频组
+  Future<List<VideoGroup>> getAllVideoGroups() =>
+      (select(videoGroups)..orderBy([(g) => OrderingTerm.desc(g.addedAt)])).get();
+
   /// v4 migration: 将老视频全部归到 manual 容器
   Future<void> _migrateOldVideosToManual() async {
     final manualId = await _ensureManualContainer();
-    final allVideos = await select(videos).get();
-    final now = DateTime.now();
-    for (final v in allVideos) {
+    // Use raw SQL since the old videos table may have different columns
+    // than the current schema (v6). The addColumn for upMid/aiTags in
+    // previous migrations already ran.
+    final result = await customSelect(
+      'SELECT bvid, added_at FROM videos',
+      readsFrom: {videos},
+    ).get();
+    for (final row in result) {
+      final bvid = row.data['bvid'] as String;
+      final addedAt = row.data['added_at'] as int? ?? 0;
       await into(containerVideos).insert(
         ContainerVideosCompanion.insert(
           containerId: manualId,
-          bvid: v.bvid,
-          addedAt: v.addedAt,
+          bvid: bvid,
+          addedAt: DateTime.fromMillisecondsSinceEpoch(addedAt),
         ),
         mode: InsertMode.insertOrIgnore,
       );
     }
-    // avoid unused variable
-    now.toString();
   }
+
+  /// 获取视频组
+
 
   /// 确保 "手动" 容器存在, 返回其 ID
   Future<int> _ensureManualContainer() async {
@@ -203,6 +284,10 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertVideo(VideosCompanion v) =>
       into(videos).insertOnConflictUpdate(v);
+
+  /// 插入/更新视频组 (insert or replace)
+  Future<void> insertVideoGroup(VideoGroupsCompanion group) =>
+      into(videoGroups).insert(group, mode: InsertMode.insertOrReplace);
 
   /// 更新视频的 AI tags
   Future<void> updateVideoTags(String bvid, {String? aiTags}) async {
@@ -242,7 +327,7 @@ class AppDatabase extends _$AppDatabase {
       (select(subtitles)
             ..where((s) =>
                 s.bvid.equals(bvid) &
-                s.pageNum.equals(pageNum) &
+                s.page.equals(pageNum) &
                 s.language.equals(lang)))
           .getSingleOrNull();
 

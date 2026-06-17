@@ -176,6 +176,14 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
           summaryId: summary.id,
         ),
       };
+
+      // 2 秒后清除 genState, 让 UI 跳到已保存的总结视图
+      // (避免用户看到的"总结消失"问现: streaming -> 空 -> 总结)
+      Future.delayed(const Duration(seconds: 2), () {
+        if (state[bvid]?.summaryId == summary.id) {
+          state = {...state}..remove(bvid);
+        }
+      });
     } catch (e) {
       state = {
         ...state,
