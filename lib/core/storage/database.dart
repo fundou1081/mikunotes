@@ -228,6 +228,8 @@ class AppDatabase extends _$AppDatabase {
     }
     // 最后删除会话
     await (delete(chatSessions)..where((s) => s.bvid.equals(bvid))).go();
+    // 删除容器关联 (避免孤儿引用导致计数不一致)
+    await (delete(containerVideos)..where((cv) => cv.bvid.equals(bvid))).go();
     await (delete(videos)..where((v) => v.bvid.equals(bvid))).go();
   }
 

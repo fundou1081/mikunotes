@@ -125,7 +125,10 @@ class VideosInContainerView extends ConsumerWidget {
           );
         }
         return RefreshIndicator(
-          onRefresh: () => ref.read(videosInContainerProvider(containerId).notifier).load(),
+          onRefresh: () async {
+            ref.read(videosInContainerProvider(containerId).notifier).load();
+            ref.read(containerListProvider.notifier).load();
+          },
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: videos.length,

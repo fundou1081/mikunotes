@@ -264,16 +264,41 @@ class _VideoListItemState extends ConsumerState<VideoListItem> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            '${v.uploader} · ${_formatDuration(v.duration)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(context).colorScheme.outline,
+                          child: Wrap(
+                            spacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                '${v.uploader} · ${_formatDuration(v.duration)}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context).colorScheme.outline,
+                                    ),
+                              ),
+                              if (v.pageCount > 1)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4, vertical: 0),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    '📑 ${v.pageCount}P',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      height: 1.4,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSecondaryContainer,
+                                    ),
+                                  ),
                                 ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            ],
                           ),
                         ),
                         if (_downloading)
@@ -307,42 +332,41 @@ class _VideoListItemState extends ConsumerState<VideoListItem> {
                         ),
                       ],
                     ),
-                    // Tag chips (original + AI)
+                    // Tag chips (original + AI) - 紧凑样式
                     if (v.allTags.isNotEmpty)
-                      SizedBox(
-                        height: 28,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
                           children: [
                             for (final t in v.allTags)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 1),
-                                  decoration: BoxDecoration(
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 0),
+                                decoration: BoxDecoration(
+                                  color: v.aiTags.contains(t)
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .tertiaryContainer
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  t,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    height: 1.5,
                                     color: v.aiTags.contains(t)
                                         ? Theme.of(context)
                                             .colorScheme
-                                            .tertiaryContainer
+                                            .onTertiaryContainer
                                         : Theme.of(context)
                                             .colorScheme
-                                            .surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    t,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: v.aiTags.contains(t)
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .onTertiaryContainer
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withOpacity(0.7),
-                                    ),
+                                            .onSurface
+                                            .withOpacity(0.7),
                                   ),
                                 ),
                               ),

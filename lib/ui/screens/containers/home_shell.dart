@@ -178,6 +178,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 });
             return videos.toList();
           },
+          // 首次不自动 sync, 用户点 AppBar 的\"同步\"按钮才拉
           onSync: () => r.read(containerListProvider.notifier).syncWatchLater(),
         )),
       ),

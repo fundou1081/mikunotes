@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
-/// Detect $...$ inline math in Markdown, render with monospace style
+/// Detect $...$ inline math in Markdown, render with monospace style.
+/// Only matches when content has a LaTeX command (backslash) - prevents
+/// false positives like 'Price $5' or 'shell $var'.
 class MathInlineSyntax extends md.InlineSyntax {
-  MathInlineSyntax() : super(r'\$([^$]+)\$');
+  MathInlineSyntax() : super(r'\$([^$\n\\]*\\[^$\n]+)\$');
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {

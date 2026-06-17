@@ -5,11 +5,11 @@ import 'package:mikunotes/core/providers/providers.dart';
 /// 批量导入页配置
 class BatchImportConfig {
   final String appBarTitle;
-  final String hintText; // "收藏夹" / "稍后观看"
+  final String hintText; // "收藏夹" / "稍后观看" / "UP 主"
   final Future<int> Function() resolveContainerId;
   final Future<List<Map<String, String>>> Function(int page, int pageSize) loadPage;
   final int? totalCount; // null = unknown (稍后观看: 边拉边算)
-  final Future<void> Function()? onSync; // 首次进入前同步
+  final Future<void> Function()? onSync; // 可选, null = 不自动 sync
 
   const BatchImportConfig({
     required this.appBarTitle,
@@ -62,8 +62,14 @@ class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
   Future<void> _initLoad() async {
     setState(() { _loading = true; _error = null; });
     try {
-      await widget.config.onSync?.call();
-      _containerId = await widget.config.resolveContainerId();
+      // 容器可能还没创建 (例如首次打开稍后观看)
+      // 如果 resolveContainerId 抛错, 显示"请先同步"提示
+      try {
+        _containerId = await widget.config.resolveContainerId();
+      } catch (_) {
+        if (mounted) setState(() { _loading = false; _error = '需要先同步'; });
+        return;
+      }
       final db = ref.read(databaseProvider);
       _existing = (await db.getAllVideos()).map((v) => v.bvid).toSet();
       final result = await widget.config.loadPage(1, 20);
@@ -111,6 +117,20 @@ class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
 
   int get _totalNotImported =>
       _videos.where((v) => !_existing.contains(v['bvid'])).length;
+
+  Future<void> _sync() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (widget.config.onSync == null) return;
+    setState(() => _loading = true);
+    try {
+      await widget.config.onSync!.call();
+      messenger.showSnackBar(const SnackBar(content: Text('✓ 同步完成')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('✗ 同步失败: $e')));
+    }
+    if (mounted) setState(() => _loading = false);
+    if (mounted) _initLoad();
+  }
 
   Future<void> _importAll() async {
     final notImported = _videos
@@ -171,6 +191,8 @@ class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
     ref.read(videoListProvider.notifier).load();
     ref.read(videosInContainerProvider(_containerId).notifier).load();
     ref.read(allFavoriteVideosProvider.notifier).load();
+    ref.read(allUpMasterVideosProvider.notifier).load();
+    ref.read(upMasterListProvider.notifier).load();
   }
 
   // ── UI ────────────────────────────────────────────────
@@ -181,6 +203,12 @@ class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
       appBar: AppBar(
         title: Text(widget.config.appBarTitle),
         actions: [
+          if (!_loading && widget.config.onSync != null)
+            TextButton.icon(
+              onPressed: _importing ? null : _sync,
+              icon: const Icon(Icons.cloud_sync),
+              label: const Text('同步'),
+            ),
           if (!_loading)
             TextButton.icon(
               onPressed: _importing ? null : _importAll,
@@ -194,7 +222,9 @@ class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
           : _importing
               ? _ImportProgressWidget(progress: _progress, total: _progressTotal)
               : _error != null
-                  ? _ImportErrorWidget(error: _error!, onRetry: _initLoad)
+                  ? _ImportErrorWidget(
+                      error: _error!, onRetry: _sync,
+                      retryLabel: _error!.contains('同步') ? '从 B 站同步' : '重试')
                   : _buildList(),
     );
   }
@@ -381,7 +411,8 @@ class _ImportProgressWidget extends StatelessWidget {
 class _ImportErrorWidget extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
-  const _ImportErrorWidget({required this.error, required this.onRetry});
+  final String? retryLabel;
+  const _ImportErrorWidget({required this.error, required this.onRetry, this.retryLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -389,13 +420,20 @@ class _ImportErrorWidget extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+          Icon(_isSyncNeeded(error) ? Icons.cloud_off : Icons.error_outline,
+              size: 48, color: Colors.grey),
           const SizedBox(height: 12),
-          Text('加载失败: $error', textAlign: TextAlign.center),
+          Text(error, textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('重试')),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: Icon(_isSyncNeeded(error) ? Icons.cloud_sync : Icons.refresh),
+            label: Text(retryLabel ?? (_isSyncNeeded(error) ? '从 B 站同步' : '重试')),
+          ),
         ]),
       ),
     );
   }
+
+  bool _isSyncNeeded(String e) => e.contains('需要先同步') || e.contains('未登录') || e.contains('未创建');
 }
