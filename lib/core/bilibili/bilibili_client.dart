@@ -490,19 +490,34 @@ class BilibiliClient {
   /// 返回: {videos: [{bvid, title, cover, duration, aid}], total: int, hasMore: bool}
   Future<Map<String, dynamic>> getUpMasterLatestVideos(int mid,
       {int pn = 1, int ps = 20}) async {
-    await _ensureWbiKeys();
-    if (_wbiImgKey == null || _wbiSubKey == null) {
-      throw Exception('WBI 密钥获取失败, 无法获取 UP 主视频');
+    Future<Response<dynamic>> doRequest() async {
+      await _ensureWbiKeys();
+      if (_wbiImgKey == null || _wbiSubKey == null) {
+        throw Exception('WBI 密钥获取失败, 无法获取 UP 主视频');
+      }
+      final signed = signWbi(
+        {'mid': mid, 'pn': pn, 'ps': ps, 'order': 'pubdate', 'platform': 'web', 'web_location': '1550101'},
+        _wbiImgKey!,
+        _wbiSubKey!,
+      );
+      return _dio.get(
+        'https://api.bilibili.com/x/space/wbi/arc/search',
+        queryParameters: signed,
+      );
     }
-    final signed = signWbi(
-      {'mid': mid, 'pn': pn, 'ps': ps, 'order': 'pubdate', 'platform': 'web', 'web_location': '1550101'},
-      _wbiImgKey!,
-      _wbiSubKey!,
-    );
-    final resp = await _dio.get(
-      'https://api.bilibili.com/x/space/wbi/arc/search',
-      queryParameters: signed,
-    );
+
+    Response<dynamic> resp;
+    try {
+      resp = await doRequest();
+    } on DioException catch (e) {
+      // 412 = WBI 密钥过期, 强制刷新后重试一次
+      if (e.response?.statusCode == 412) {
+        await _ensureWbiKeys(force: true);
+        resp = await doRequest();
+      } else {
+        rethrow;
+      }
+    }
     final data = resp.data?['data'];
     if (data is! Map) return {'videos': [], 'total': 0, 'hasMore': false};
     final list = (data['list'] as List?)?.cast<Map>() ?? [];

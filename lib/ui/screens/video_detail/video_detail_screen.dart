@@ -149,7 +149,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             Expanded(
             child: TabBarView(children: [
           _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll, selectedPage: _selectedPage, pageCount: _pageCount),
-          _ChatTab(bvid: widget.bvid, subtitle: _subtitle),
+          _ChatTab(bvid: widget.bvid, subtitle: _subtitle, selectedPage: _selectedPage),
           _SubtitleTab(
             key: ValueKey(_subtitleTabKey),
             bvid: widget.bvid,
@@ -790,7 +790,8 @@ class _SummariesListSheet extends ConsumerWidget {
 class _ChatTab extends ConsumerStatefulWidget {
   final String bvid;
   final VideoSubtitle? subtitle;
-  const _ChatTab({required this.bvid, required this.subtitle});
+  final int selectedPage;
+  const _ChatTab({required this.bvid, required this.subtitle, this.selectedPage = 1});
 
   @override
   ConsumerState<_ChatTab> createState() => _ChatTabState();
@@ -812,6 +813,20 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   void initState() {
     super.initState();
     _initSession();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 分P 切换时: 重新计算 tokens (字幕长度变了)
+    if (oldWidget.subtitle != widget.subtitle) {
+      final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
+      setState(() {
+        _tokensUsed = LLMClient.estimateTokens(
+          '${widget.subtitle?.fullText ?? ''}$msgsTotal',
+        );
+      });
+    }
   }
 
   Future<void> _initSession() async {
@@ -1061,6 +1076,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           onTap: _showSessionList,
           onNew: _newSession,
         ),
+        _ChatSubtitleContext(subtitle: widget.subtitle, selectedPage: widget.selectedPage),
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
@@ -1105,6 +1121,51 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ChatSubtitleContext extends StatelessWidget {
+  final VideoSubtitle? subtitle;
+  final int selectedPage;
+  const _ChatSubtitleContext({required this.subtitle, required this.selectedPage});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasSub = subtitle != null;
+    final pageLabel = selectedPage == 0 ? '整体' : 'P$selectedPage';
+    return Material(
+      color: scheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          children: [
+            Icon(
+              hasSub ? Icons.subtitles_outlined : Icons.subtitles_off_outlined,
+              size: 14,
+              color: hasSub ? scheme.primary : scheme.outline,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                hasSub
+                    ? '📑 $pageLabel · ${subtitle!.language} · ${subtitle!.entries.length} 条'
+                    : '未加载字幕 · $pageLabel',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: hasSub ? scheme.onSurface : scheme.outline,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              hasSub ? '~${LLMClient.estimateTokens(subtitle!.fullText)} tokens' : '',
+              style: TextStyle(fontSize: 11, color: scheme.outline),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
