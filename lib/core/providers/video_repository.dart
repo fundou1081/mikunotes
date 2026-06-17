@@ -128,47 +128,68 @@ class VideoRepository {
     final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
     if (pages.isEmpty) throw Exception('视频无分P信息');
 
-    final pageIdx = 0;
-    final cid = pages[pageIdx]['cid'] as int;
-    final subtitleData = await _bili.getSubtitleInfo(aid: video.aid, cid: cid);
-    final subtitles = subtitleData['subtitles'] as List? ?? [];
-    if (subtitles.isEmpty) {
-      throw Exception('该视频没有字幕 (WBI签名可能失败)');
-    }
-
     final results = <VideoSubtitle>[];
-    for (final s in subtitles.cast<Map>()) {
-      final lan = s['lan_doc'] as String? ?? s['lan'] as String? ?? 'unknown';
-      final url = (s['subtitle_url'] as String? ?? '').startsWith('//')
-          ? 'https:${s['subtitle_url']}'
-          : s['subtitle_url'] as String;
-      if (url.isEmpty) continue;
+    int totalSaved = 0;
+    int failedPages = 0;
+
+    // 遍历所有分P, 分别为每个分P下载并保存
+    for (int pIdx = 0; pIdx < pages.length; pIdx++) {
+      final pageNum = pIdx + 1; // 1-indexed
+      final cid = pages[pIdx]['cid'] as int;
+      if (cid == 0) continue;
 
       try {
-        final rawBody = await _bili.downloadSubtitleRaw(url);
-        final entries = SubtitleParser.parseBilibiliJson(rawBody);
-        final plainText = SubtitleParser.toPlainText(entries);
+        final subtitleData = await _bili.getSubtitleInfo(aid: video.aid, cid: cid);
+        final subtitles = (subtitleData['subtitles'] as List?)?.cast<Map>() ?? [];
+        if (subtitles.isEmpty) {
+          // 该分P无字幕, 跳过
+          continue;
+        }
 
-        await _db.upsertSubtitle(SubtitlesCompanion(
-          id: const drift.Value.absent(),
-          bvid: drift.Value(bvid),
-          page: drift.Value(1),
-          language: drift.Value(lan),
-          rawJson: drift.Value(rawBody),
-          plainText: drift.Value(plainText),
-          charCount: drift.Value(plainText.length),
-          entryCount: drift.Value(entries.length),
-          downloadedAt: drift.Value(DateTime.now()),
-        ));
+        for (final s in subtitles) {
+          final lan = s['lan_doc'] as String? ?? s['lan'] as String? ?? 'unknown';
+          final rawUrl = s['subtitle_url'] as String? ?? '';
+          if (rawUrl.isEmpty) continue;
+          final url = rawUrl.startsWith('//') ? 'https:$rawUrl' : rawUrl;
 
-        results.add(VideoSubtitle(
-          videoId: bvid,
-          language: lan,
-          entries: entries,
-        ));
+          try {
+            final rawBody = await _bili.downloadSubtitleRaw(url);
+            final entries = SubtitleParser.parseBilibiliJson(rawBody);
+            final plainText = SubtitleParser.toPlainText(entries);
+
+            await _db.upsertSubtitle(SubtitlesCompanion(
+              id: const drift.Value.absent(),
+              bvid: drift.Value(bvid),
+              page: drift.Value(pageNum),
+              language: drift.Value(lan),
+              rawJson: drift.Value(rawBody),
+              plainText: drift.Value(plainText),
+              charCount: drift.Value(plainText.length),
+              entryCount: drift.Value(entries.length),
+              downloadedAt: drift.Value(DateTime.now()),
+            ));
+
+            totalSaved++;
+            results.add(VideoSubtitle(
+              videoId: bvid,
+              language: lan,
+              entries: entries,
+            ));
+          } catch (_) {
+            // 单个语言失败不影响其他
+          }
+        }
       } catch (_) {
-        // 单个语言失败不影响其他
+        failedPages++;
+        // 单个分P获取失败不影响其他分P
       }
+    }
+
+    if (totalSaved == 0) {
+      if (failedPages > 0) {
+        throw Exception('该视频没有字幕 (${failedPages}个分P获取失败)');
+      }
+      throw Exception('该视频没有字幕');
     }
     return results;
   }
