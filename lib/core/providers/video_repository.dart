@@ -51,6 +51,8 @@ class VideoRepository {
     final title = info['title'] as String;
     final cover = info['pic'] as String? ?? '';
     final uploader = (info['owner'] as Map?)?['name'] as String? ?? '';
+    final upMid = (info['owner'] as Map?)?['mid'] as int? ?? 0;
+    final upFace = (info['owner'] as Map?)?['face'] as String? ?? '';
     final duration = (info['duration'] as num?)?.toInt() ?? 0;
     final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
 
@@ -70,11 +72,26 @@ class VideoRepository {
       title: video.title,
       coverUrl: drift.Value(video.coverUrl),
       uploader: drift.Value(video.uploader),
+      upMid: drift.Value(upMid),
       aid: aid,
       duration: drift.Value(video.duration),
       pageCount: drift.Value(video.pageCount),
       addedAt: video.addedAt,
     ));
+
+    // 创建/查找 UP 主容器, 关联到视频
+    if (upMid > 0) {
+      try {
+        final um = await _db.addOrGetUpMaster(
+          uid: upMid, name: uploader, face: upFace,
+        );
+        await _db.addVideoToUpMasterContainer(
+          upMasterId: um.id, bvid: bvid, addedAt: video.addedAt,
+        );
+      } catch (_) {
+        // UP 主容器创建失败不影响主流程
+      }
+    }
 
     // 尝试下载第一P的所有语言字幕 (非阻塞)
     if (pages.isNotEmpty) {
@@ -529,6 +546,8 @@ class VideoRepository {
       try {
         // 先看 DB 里有没有
         var existing = await _db.getVideo(bvid);
+        int upMid = 0;
+        String upName = '', upFace = '';
         if (existing == null) {
           // 从 B 站拉元信息
           final info = await _bili.getVideoInfo(bvid);
@@ -536,6 +555,9 @@ class VideoRepository {
           final title = info['title'] as String? ?? bvid;
           final cover = info['pic'] as String? ?? '';
           final uploader = (info['owner'] as Map?)?['name'] as String? ?? '';
+          upMid = (info['owner'] as Map?)?['mid'] as int? ?? 0;
+          upName = uploader;
+          upFace = (info['owner'] as Map?)?['face'] as String? ?? '';
           final duration = (info['duration'] as num?)?.toInt() ?? 0;
           final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
           await _db.upsertVideo(VideosCompanion.insert(
@@ -543,13 +565,29 @@ class VideoRepository {
             title: title,
             coverUrl: drift.Value(cover),
             uploader: drift.Value(uploader),
+            upMid: drift.Value(upMid),
             aid: aid,
             duration: drift.Value(duration),
             pageCount: drift.Value(pages.length),
             addedAt: DateTime.now(),
           ));
         } else {
+          upMid = existing.upMid;
+          upName = existing.uploader;
           alreadyInDb.add(bvid);
+        }
+        // 创建/查找 UP 主容器, 关联到视频
+        if (upMid > 0) {
+          try {
+            final um = await _db.addOrGetUpMaster(
+              uid: upMid, name: upName, face: upFace,
+            );
+            await _db.addVideoToUpMasterContainer(
+              upMasterId: um.id, bvid: bvid,
+            );
+          } catch (_) {
+            // 失败不影响主流程
+          }
         }
         // 加入容器
         await _db.addVideoToContainer(containerId, bvid);

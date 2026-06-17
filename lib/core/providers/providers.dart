@@ -229,7 +229,7 @@ final backupServiceProvider = Provider<BackupService>((ref) {
 
 // ─── 容器系统 (3 平行容器) ─────────────────────────────────────
 
-enum ContainerType { manual, favorite, watchLater }
+enum ContainerType { manual, favorite, watchLater, upmaster }
 
 extension ContainerTypeX on ContainerType {
   String get dbValue {
@@ -240,6 +240,8 @@ extension ContainerTypeX on ContainerType {
         return 'favorite';
       case ContainerType.watchLater:
         return 'watch_later';
+      case ContainerType.upmaster:
+        return 'upmaster';
     }
   }
   String get displayName {
@@ -250,6 +252,8 @@ extension ContainerTypeX on ContainerType {
         return '收藏夹';
       case ContainerType.watchLater:
         return '稍后观看';
+      case ContainerType.upmaster:
+        return 'UP 主';
     }
   }
   static ContainerType fromDb(String v) {
@@ -258,6 +262,8 @@ extension ContainerTypeX on ContainerType {
         return ContainerType.favorite;
       case 'watch_later':
         return ContainerType.watchLater;
+      case 'upmaster':
+        return ContainerType.upmaster;
       default:
         return ContainerType.manual;
     }

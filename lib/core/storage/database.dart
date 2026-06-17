@@ -12,6 +12,7 @@ class Videos extends Table {
   TextColumn get title => text()();
   TextColumn get coverUrl => text().withDefault(const Constant(''))();
   TextColumn get uploader => text().withDefault(const Constant(''))();
+  IntColumn get upMid => integer().withDefault(const Constant(0))(); // B站 UP主 mid
   IntColumn get aid => integer()();
   IntColumn get duration => integer().withDefault(const Constant(0))();
   IntColumn get pageCount => integer().withDefault(const Constant(1))();
@@ -21,6 +22,18 @@ class Videos extends Table {
 
   @override
   Set<Column> get primaryKey => {bvid};
+}
+
+/// UP主表 (跟踪关注的 UP 主 + 关联到容器)
+class UpMasters extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get uid => integer().unique()(); // B站 mid
+  TextColumn get name => text()();
+  TextColumn get face => text().withDefault(const Constant(''))();
+  IntColumn get lastVideoAid => integer().nullable()(); // 上次同步到的最新视频 aid
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+  IntColumn get containerId => integer()(); // 关联 containers.id
+  DateTimeColumn get addedAt => dateTime()();
 }
 
 /// 字幕表 (一个视频可有多语言)
@@ -102,14 +115,14 @@ class ContainerVideos extends Table {
 }
 
 @DriftDatabase(
-  tables: [Videos, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos],
+  tables: [Videos, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos, UpMasters],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -135,6 +148,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(containers);
             await m.createTable(containerVideos);
             await _migrateOldVideosToManual();
+          }
+          if (from < 5) {
+            // v5: 加 upmasters 表 + videos.upMid 列
+            await m.addColumn(videos, videos.upMid);
+            await m.createTable(upMasters);
           }
         },
       );
@@ -431,6 +449,101 @@ class AppDatabase extends _$AppDatabase {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
+  }
+
+  // ─── UP 主 ──────────────────────────────────────────────
+
+  /// 根据 uid 获取 UP 主 (含其容器 ID)
+  Future<UpMaster?> getUpMasterByUid(int uid) =>
+      (select(upMasters)..where((u) => u.uid.equals(uid))).getSingleOrNull();
+
+  /// 获取所有 UP 主
+  Future<List<UpMaster>> getAllUpMasters() =>
+      (select(upMasters)..orderBy([(u) => OrderingTerm.asc(u.name)])).get();
+
+  /// 根据 id 获取 UP 主
+  Future<UpMaster?> getUpMasterById(int id) =>
+      (select(upMasters)..where((u) => u.id.equals(id))).getSingleOrNull();
+
+  /// 根据 uid 获取 UP 主容器
+  Future<Container?> getUpMasterContainer(int uid) async {
+    final um = await getUpMasterByUid(uid);
+    if (um == null) return null;
+    return getContainer(um.containerId);
+  }
+
+  /// 添加或获取 UP 主 (如果 UP 主不存在则创建)
+  /// 返回 UpMaster 记录
+  Future<UpMaster> addOrGetUpMaster({
+    required int uid,
+    required String name,
+    String face = '',
+  }) async {
+    final existing = await getUpMasterByUid(uid);
+    if (existing != null) return existing;
+
+    // 先创建 upmaster 容器
+    final containerId = await into(containers).insert(
+      ContainersCompanion.insert(
+        type: 'upmaster',
+        externalId: Value(uid.toString()),
+        name: name,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+
+    // 拿容器 ID (如果已存在, get container)
+    int actualContainerId = containerId;
+    if (containerId == 0) {
+      final existingContainer = await getUpMasterContainer(uid);
+      if (existingContainer != null) {
+        actualContainerId = existingContainer.id;
+      }
+    }
+
+    // 创建 UpMaster 记录
+    final id = await into(upMasters).insert(
+      UpMastersCompanion.insert(
+        uid: uid,
+        name: name,
+        face: Value(face),
+        containerId: actualContainerId,
+        addedAt: DateTime.now(),
+      ),
+    );
+    return UpMaster(
+      id: id,
+      uid: uid,
+      name: name,
+      face: face,
+      lastVideoAid: null,
+      lastSyncedAt: null,
+      containerId: actualContainerId,
+      addedAt: DateTime.now(),
+    );
+  }
+
+  /// 更新 UP 主同步状态
+  Future<void> updateUpMasterSync(int uid, int lastVideoAid) async {
+    await (update(upMasters)..where((u) => u.uid.equals(uid))).write(
+      UpMastersCompanion(
+        lastVideoAid: Value(lastVideoAid),
+        lastSyncedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// 添加视频时也关联到 UP 主容器
+  Future<void> addVideoToUpMasterContainer({
+    required int upMasterId,
+    required String bvid,
+    DateTime? addedAt,
+  }) async {
+    final um = await getUpMasterById(upMasterId);
+    if (um == null) return;
+    await addVideoToContainer(um.containerId, bvid, addedAt: addedAt);
   }
 }
 

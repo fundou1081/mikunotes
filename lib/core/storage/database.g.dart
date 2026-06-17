@@ -34,6 +34,13 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _upMidMeta = const VerificationMeta('upMid');
+  @override
+  late final GeneratedColumn<int> upMid = GeneratedColumn<int>(
+      'up_mid', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _aidMeta = const VerificationMeta('aid');
   @override
   late final GeneratedColumn<int> aid = GeneratedColumn<int>(
@@ -81,6 +88,7 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
         title,
         coverUrl,
         uploader,
+        upMid,
         aid,
         duration,
         pageCount,
@@ -117,6 +125,10 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
     if (data.containsKey('uploader')) {
       context.handle(_uploaderMeta,
           uploader.isAcceptableOrUnknown(data['uploader']!, _uploaderMeta));
+    }
+    if (data.containsKey('up_mid')) {
+      context.handle(
+          _upMidMeta, upMid.isAcceptableOrUnknown(data['up_mid']!, _upMidMeta));
     }
     if (data.containsKey('aid')) {
       context.handle(
@@ -163,6 +175,8 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
           .read(DriftSqlType.string, data['${effectivePrefix}cover_url'])!,
       uploader: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}uploader'])!,
+      upMid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}up_mid'])!,
       aid: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}aid'])!,
       duration: attachedDatabase.typeMapping
@@ -189,6 +203,7 @@ class Video extends DataClass implements Insertable<Video> {
   final String title;
   final String coverUrl;
   final String uploader;
+  final int upMid;
   final int aid;
   final int duration;
   final int pageCount;
@@ -200,6 +215,7 @@ class Video extends DataClass implements Insertable<Video> {
       required this.title,
       required this.coverUrl,
       required this.uploader,
+      required this.upMid,
       required this.aid,
       required this.duration,
       required this.pageCount,
@@ -213,6 +229,7 @@ class Video extends DataClass implements Insertable<Video> {
     map['title'] = Variable<String>(title);
     map['cover_url'] = Variable<String>(coverUrl);
     map['uploader'] = Variable<String>(uploader);
+    map['up_mid'] = Variable<int>(upMid);
     map['aid'] = Variable<int>(aid);
     map['duration'] = Variable<int>(duration);
     map['page_count'] = Variable<int>(pageCount);
@@ -228,6 +245,7 @@ class Video extends DataClass implements Insertable<Video> {
       title: Value(title),
       coverUrl: Value(coverUrl),
       uploader: Value(uploader),
+      upMid: Value(upMid),
       aid: Value(aid),
       duration: Value(duration),
       pageCount: Value(pageCount),
@@ -245,6 +263,7 @@ class Video extends DataClass implements Insertable<Video> {
       title: serializer.fromJson<String>(json['title']),
       coverUrl: serializer.fromJson<String>(json['coverUrl']),
       uploader: serializer.fromJson<String>(json['uploader']),
+      upMid: serializer.fromJson<int>(json['upMid']),
       aid: serializer.fromJson<int>(json['aid']),
       duration: serializer.fromJson<int>(json['duration']),
       pageCount: serializer.fromJson<int>(json['pageCount']),
@@ -261,6 +280,7 @@ class Video extends DataClass implements Insertable<Video> {
       'title': serializer.toJson<String>(title),
       'coverUrl': serializer.toJson<String>(coverUrl),
       'uploader': serializer.toJson<String>(uploader),
+      'upMid': serializer.toJson<int>(upMid),
       'aid': serializer.toJson<int>(aid),
       'duration': serializer.toJson<int>(duration),
       'pageCount': serializer.toJson<int>(pageCount),
@@ -275,6 +295,7 @@ class Video extends DataClass implements Insertable<Video> {
           String? title,
           String? coverUrl,
           String? uploader,
+          int? upMid,
           int? aid,
           int? duration,
           int? pageCount,
@@ -286,6 +307,7 @@ class Video extends DataClass implements Insertable<Video> {
         title: title ?? this.title,
         coverUrl: coverUrl ?? this.coverUrl,
         uploader: uploader ?? this.uploader,
+        upMid: upMid ?? this.upMid,
         aid: aid ?? this.aid,
         duration: duration ?? this.duration,
         pageCount: pageCount ?? this.pageCount,
@@ -299,6 +321,7 @@ class Video extends DataClass implements Insertable<Video> {
       title: data.title.present ? data.title.value : this.title,
       coverUrl: data.coverUrl.present ? data.coverUrl.value : this.coverUrl,
       uploader: data.uploader.present ? data.uploader.value : this.uploader,
+      upMid: data.upMid.present ? data.upMid.value : this.upMid,
       aid: data.aid.present ? data.aid.value : this.aid,
       duration: data.duration.present ? data.duration.value : this.duration,
       pageCount: data.pageCount.present ? data.pageCount.value : this.pageCount,
@@ -315,6 +338,7 @@ class Video extends DataClass implements Insertable<Video> {
           ..write('title: $title, ')
           ..write('coverUrl: $coverUrl, ')
           ..write('uploader: $uploader, ')
+          ..write('upMid: $upMid, ')
           ..write('aid: $aid, ')
           ..write('duration: $duration, ')
           ..write('pageCount: $pageCount, ')
@@ -326,7 +350,7 @@ class Video extends DataClass implements Insertable<Video> {
   }
 
   @override
-  int get hashCode => Object.hash(bvid, title, coverUrl, uploader, aid,
+  int get hashCode => Object.hash(bvid, title, coverUrl, uploader, upMid, aid,
       duration, pageCount, addedAt, tags, aiTags);
   @override
   bool operator ==(Object other) =>
@@ -336,6 +360,7 @@ class Video extends DataClass implements Insertable<Video> {
           other.title == this.title &&
           other.coverUrl == this.coverUrl &&
           other.uploader == this.uploader &&
+          other.upMid == this.upMid &&
           other.aid == this.aid &&
           other.duration == this.duration &&
           other.pageCount == this.pageCount &&
@@ -349,6 +374,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
   final Value<String> title;
   final Value<String> coverUrl;
   final Value<String> uploader;
+  final Value<int> upMid;
   final Value<int> aid;
   final Value<int> duration;
   final Value<int> pageCount;
@@ -361,6 +387,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     this.title = const Value.absent(),
     this.coverUrl = const Value.absent(),
     this.uploader = const Value.absent(),
+    this.upMid = const Value.absent(),
     this.aid = const Value.absent(),
     this.duration = const Value.absent(),
     this.pageCount = const Value.absent(),
@@ -374,6 +401,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     required String title,
     this.coverUrl = const Value.absent(),
     this.uploader = const Value.absent(),
+    this.upMid = const Value.absent(),
     required int aid,
     this.duration = const Value.absent(),
     this.pageCount = const Value.absent(),
@@ -390,6 +418,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     Expression<String>? title,
     Expression<String>? coverUrl,
     Expression<String>? uploader,
+    Expression<int>? upMid,
     Expression<int>? aid,
     Expression<int>? duration,
     Expression<int>? pageCount,
@@ -403,6 +432,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       if (title != null) 'title': title,
       if (coverUrl != null) 'cover_url': coverUrl,
       if (uploader != null) 'uploader': uploader,
+      if (upMid != null) 'up_mid': upMid,
       if (aid != null) 'aid': aid,
       if (duration != null) 'duration': duration,
       if (pageCount != null) 'page_count': pageCount,
@@ -418,6 +448,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       Value<String>? title,
       Value<String>? coverUrl,
       Value<String>? uploader,
+      Value<int>? upMid,
       Value<int>? aid,
       Value<int>? duration,
       Value<int>? pageCount,
@@ -430,6 +461,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       title: title ?? this.title,
       coverUrl: coverUrl ?? this.coverUrl,
       uploader: uploader ?? this.uploader,
+      upMid: upMid ?? this.upMid,
       aid: aid ?? this.aid,
       duration: duration ?? this.duration,
       pageCount: pageCount ?? this.pageCount,
@@ -454,6 +486,9 @@ class VideosCompanion extends UpdateCompanion<Video> {
     }
     if (uploader.present) {
       map['uploader'] = Variable<String>(uploader.value);
+    }
+    if (upMid.present) {
+      map['up_mid'] = Variable<int>(upMid.value);
     }
     if (aid.present) {
       map['aid'] = Variable<int>(aid.value);
@@ -486,6 +521,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
           ..write('title: $title, ')
           ..write('coverUrl: $coverUrl, ')
           ..write('uploader: $uploader, ')
+          ..write('upMid: $upMid, ')
           ..write('aid: $aid, ')
           ..write('duration: $duration, ')
           ..write('pageCount: $pageCount, ')
@@ -2737,6 +2773,430 @@ class ContainerVideosCompanion extends UpdateCompanion<ContainerVideo> {
   }
 }
 
+class $UpMastersTable extends UpMasters
+    with TableInfo<$UpMastersTable, UpMaster> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UpMastersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _uidMeta = const VerificationMeta('uid');
+  @override
+  late final GeneratedColumn<int> uid = GeneratedColumn<int>(
+      'uid', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _faceMeta = const VerificationMeta('face');
+  @override
+  late final GeneratedColumn<String> face = GeneratedColumn<String>(
+      'face', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _lastVideoAidMeta =
+      const VerificationMeta('lastVideoAid');
+  @override
+  late final GeneratedColumn<int> lastVideoAid = GeneratedColumn<int>(
+      'last_video_aid', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _lastSyncedAtMeta =
+      const VerificationMeta('lastSyncedAt');
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+      'last_synced_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _containerIdMeta =
+      const VerificationMeta('containerId');
+  @override
+  late final GeneratedColumn<int> containerId = GeneratedColumn<int>(
+      'container_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _addedAtMeta =
+      const VerificationMeta('addedAt');
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+      'added_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, uid, name, face, lastVideoAid, lastSyncedAt, containerId, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'up_masters';
+  @override
+  VerificationContext validateIntegrity(Insertable<UpMaster> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('uid')) {
+      context.handle(
+          _uidMeta, uid.isAcceptableOrUnknown(data['uid']!, _uidMeta));
+    } else if (isInserting) {
+      context.missing(_uidMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('face')) {
+      context.handle(
+          _faceMeta, face.isAcceptableOrUnknown(data['face']!, _faceMeta));
+    }
+    if (data.containsKey('last_video_aid')) {
+      context.handle(
+          _lastVideoAidMeta,
+          lastVideoAid.isAcceptableOrUnknown(
+              data['last_video_aid']!, _lastVideoAidMeta));
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+          _lastSyncedAtMeta,
+          lastSyncedAt.isAcceptableOrUnknown(
+              data['last_synced_at']!, _lastSyncedAtMeta));
+    }
+    if (data.containsKey('container_id')) {
+      context.handle(
+          _containerIdMeta,
+          containerId.isAcceptableOrUnknown(
+              data['container_id']!, _containerIdMeta));
+    } else if (isInserting) {
+      context.missing(_containerIdMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(_addedAtMeta,
+          addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta));
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  UpMaster map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UpMaster(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      uid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uid'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      face: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}face'])!,
+      lastVideoAid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}last_video_aid']),
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_synced_at']),
+      containerId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}container_id'])!,
+      addedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}added_at'])!,
+    );
+  }
+
+  @override
+  $UpMastersTable createAlias(String alias) {
+    return $UpMastersTable(attachedDatabase, alias);
+  }
+}
+
+class UpMaster extends DataClass implements Insertable<UpMaster> {
+  final int id;
+  final int uid;
+  final String name;
+  final String face;
+  final int? lastVideoAid;
+  final DateTime? lastSyncedAt;
+  final int containerId;
+  final DateTime addedAt;
+  const UpMaster(
+      {required this.id,
+      required this.uid,
+      required this.name,
+      required this.face,
+      this.lastVideoAid,
+      this.lastSyncedAt,
+      required this.containerId,
+      required this.addedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['uid'] = Variable<int>(uid);
+    map['name'] = Variable<String>(name);
+    map['face'] = Variable<String>(face);
+    if (!nullToAbsent || lastVideoAid != null) {
+      map['last_video_aid'] = Variable<int>(lastVideoAid);
+    }
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
+    map['container_id'] = Variable<int>(containerId);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  UpMastersCompanion toCompanion(bool nullToAbsent) {
+    return UpMastersCompanion(
+      id: Value(id),
+      uid: Value(uid),
+      name: Value(name),
+      face: Value(face),
+      lastVideoAid: lastVideoAid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastVideoAid),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
+      containerId: Value(containerId),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory UpMaster.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UpMaster(
+      id: serializer.fromJson<int>(json['id']),
+      uid: serializer.fromJson<int>(json['uid']),
+      name: serializer.fromJson<String>(json['name']),
+      face: serializer.fromJson<String>(json['face']),
+      lastVideoAid: serializer.fromJson<int?>(json['lastVideoAid']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+      containerId: serializer.fromJson<int>(json['containerId']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'uid': serializer.toJson<int>(uid),
+      'name': serializer.toJson<String>(name),
+      'face': serializer.toJson<String>(face),
+      'lastVideoAid': serializer.toJson<int?>(lastVideoAid),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+      'containerId': serializer.toJson<int>(containerId),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  UpMaster copyWith(
+          {int? id,
+          int? uid,
+          String? name,
+          String? face,
+          Value<int?> lastVideoAid = const Value.absent(),
+          Value<DateTime?> lastSyncedAt = const Value.absent(),
+          int? containerId,
+          DateTime? addedAt}) =>
+      UpMaster(
+        id: id ?? this.id,
+        uid: uid ?? this.uid,
+        name: name ?? this.name,
+        face: face ?? this.face,
+        lastVideoAid:
+            lastVideoAid.present ? lastVideoAid.value : this.lastVideoAid,
+        lastSyncedAt:
+            lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+        containerId: containerId ?? this.containerId,
+        addedAt: addedAt ?? this.addedAt,
+      );
+  UpMaster copyWithCompanion(UpMastersCompanion data) {
+    return UpMaster(
+      id: data.id.present ? data.id.value : this.id,
+      uid: data.uid.present ? data.uid.value : this.uid,
+      name: data.name.present ? data.name.value : this.name,
+      face: data.face.present ? data.face.value : this.face,
+      lastVideoAid: data.lastVideoAid.present
+          ? data.lastVideoAid.value
+          : this.lastVideoAid,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
+      containerId:
+          data.containerId.present ? data.containerId.value : this.containerId,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UpMaster(')
+          ..write('id: $id, ')
+          ..write('uid: $uid, ')
+          ..write('name: $name, ')
+          ..write('face: $face, ')
+          ..write('lastVideoAid: $lastVideoAid, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('containerId: $containerId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, uid, name, face, lastVideoAid, lastSyncedAt, containerId, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UpMaster &&
+          other.id == this.id &&
+          other.uid == this.uid &&
+          other.name == this.name &&
+          other.face == this.face &&
+          other.lastVideoAid == this.lastVideoAid &&
+          other.lastSyncedAt == this.lastSyncedAt &&
+          other.containerId == this.containerId &&
+          other.addedAt == this.addedAt);
+}
+
+class UpMastersCompanion extends UpdateCompanion<UpMaster> {
+  final Value<int> id;
+  final Value<int> uid;
+  final Value<String> name;
+  final Value<String> face;
+  final Value<int?> lastVideoAid;
+  final Value<DateTime?> lastSyncedAt;
+  final Value<int> containerId;
+  final Value<DateTime> addedAt;
+  const UpMastersCompanion({
+    this.id = const Value.absent(),
+    this.uid = const Value.absent(),
+    this.name = const Value.absent(),
+    this.face = const Value.absent(),
+    this.lastVideoAid = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.containerId = const Value.absent(),
+    this.addedAt = const Value.absent(),
+  });
+  UpMastersCompanion.insert({
+    this.id = const Value.absent(),
+    required int uid,
+    required String name,
+    this.face = const Value.absent(),
+    this.lastVideoAid = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    required int containerId,
+    required DateTime addedAt,
+  })  : uid = Value(uid),
+        name = Value(name),
+        containerId = Value(containerId),
+        addedAt = Value(addedAt);
+  static Insertable<UpMaster> custom({
+    Expression<int>? id,
+    Expression<int>? uid,
+    Expression<String>? name,
+    Expression<String>? face,
+    Expression<int>? lastVideoAid,
+    Expression<DateTime>? lastSyncedAt,
+    Expression<int>? containerId,
+    Expression<DateTime>? addedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (uid != null) 'uid': uid,
+      if (name != null) 'name': name,
+      if (face != null) 'face': face,
+      if (lastVideoAid != null) 'last_video_aid': lastVideoAid,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (containerId != null) 'container_id': containerId,
+      if (addedAt != null) 'added_at': addedAt,
+    });
+  }
+
+  UpMastersCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? uid,
+      Value<String>? name,
+      Value<String>? face,
+      Value<int?>? lastVideoAid,
+      Value<DateTime?>? lastSyncedAt,
+      Value<int>? containerId,
+      Value<DateTime>? addedAt}) {
+    return UpMastersCompanion(
+      id: id ?? this.id,
+      uid: uid ?? this.uid,
+      name: name ?? this.name,
+      face: face ?? this.face,
+      lastVideoAid: lastVideoAid ?? this.lastVideoAid,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      containerId: containerId ?? this.containerId,
+      addedAt: addedAt ?? this.addedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (uid.present) {
+      map['uid'] = Variable<int>(uid.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (face.present) {
+      map['face'] = Variable<String>(face.value);
+    }
+    if (lastVideoAid.present) {
+      map['last_video_aid'] = Variable<int>(lastVideoAid.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    if (containerId.present) {
+      map['container_id'] = Variable<int>(containerId.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UpMastersCompanion(')
+          ..write('id: $id, ')
+          ..write('uid: $uid, ')
+          ..write('name: $name, ')
+          ..write('face: $face, ')
+          ..write('lastVideoAid: $lastVideoAid, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('containerId: $containerId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2748,6 +3208,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ContainersTable containers = $ContainersTable(this);
   late final $ContainerVideosTable containerVideos =
       $ContainerVideosTable(this);
+  late final $UpMastersTable upMasters = $UpMastersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2759,7 +3220,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         chatSessions,
         chatMessages,
         containers,
-        containerVideos
+        containerVideos,
+        upMasters
       ];
 }
 
@@ -2768,6 +3230,7 @@ typedef $$VideosTableCreateCompanionBuilder = VideosCompanion Function({
   required String title,
   Value<String> coverUrl,
   Value<String> uploader,
+  Value<int> upMid,
   required int aid,
   Value<int> duration,
   Value<int> pageCount,
@@ -2781,6 +3244,7 @@ typedef $$VideosTableUpdateCompanionBuilder = VideosCompanion Function({
   Value<String> title,
   Value<String> coverUrl,
   Value<String> uploader,
+  Value<int> upMid,
   Value<int> aid,
   Value<int> duration,
   Value<int> pageCount,
@@ -2810,6 +3274,9 @@ class $$VideosTableFilterComposer
 
   ColumnFilters<String> get uploader => $composableBuilder(
       column: $table.uploader, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get upMid => $composableBuilder(
+      column: $table.upMid, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get aid => $composableBuilder(
       column: $table.aid, builder: (column) => ColumnFilters(column));
@@ -2851,6 +3318,9 @@ class $$VideosTableOrderingComposer
   ColumnOrderings<String> get uploader => $composableBuilder(
       column: $table.uploader, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get upMid => $composableBuilder(
+      column: $table.upMid, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get aid => $composableBuilder(
       column: $table.aid, builder: (column) => ColumnOrderings(column));
 
@@ -2890,6 +3360,9 @@ class $$VideosTableAnnotationComposer
 
   GeneratedColumn<String> get uploader =>
       $composableBuilder(column: $table.uploader, builder: (column) => column);
+
+  GeneratedColumn<int> get upMid =>
+      $composableBuilder(column: $table.upMid, builder: (column) => column);
 
   GeneratedColumn<int> get aid =>
       $composableBuilder(column: $table.aid, builder: (column) => column);
@@ -2937,6 +3410,7 @@ class $$VideosTableTableManager extends RootTableManager<
             Value<String> title = const Value.absent(),
             Value<String> coverUrl = const Value.absent(),
             Value<String> uploader = const Value.absent(),
+            Value<int> upMid = const Value.absent(),
             Value<int> aid = const Value.absent(),
             Value<int> duration = const Value.absent(),
             Value<int> pageCount = const Value.absent(),
@@ -2950,6 +3424,7 @@ class $$VideosTableTableManager extends RootTableManager<
             title: title,
             coverUrl: coverUrl,
             uploader: uploader,
+            upMid: upMid,
             aid: aid,
             duration: duration,
             pageCount: pageCount,
@@ -2963,6 +3438,7 @@ class $$VideosTableTableManager extends RootTableManager<
             required String title,
             Value<String> coverUrl = const Value.absent(),
             Value<String> uploader = const Value.absent(),
+            Value<int> upMid = const Value.absent(),
             required int aid,
             Value<int> duration = const Value.absent(),
             Value<int> pageCount = const Value.absent(),
@@ -2976,6 +3452,7 @@ class $$VideosTableTableManager extends RootTableManager<
             title: title,
             coverUrl: coverUrl,
             uploader: uploader,
+            upMid: upMid,
             aid: aid,
             duration: duration,
             pageCount: pageCount,
@@ -4159,6 +4636,212 @@ typedef $$ContainerVideosTableProcessedTableManager = ProcessedTableManager<
     ),
     ContainerVideo,
     PrefetchHooks Function()>;
+typedef $$UpMastersTableCreateCompanionBuilder = UpMastersCompanion Function({
+  Value<int> id,
+  required int uid,
+  required String name,
+  Value<String> face,
+  Value<int?> lastVideoAid,
+  Value<DateTime?> lastSyncedAt,
+  required int containerId,
+  required DateTime addedAt,
+});
+typedef $$UpMastersTableUpdateCompanionBuilder = UpMastersCompanion Function({
+  Value<int> id,
+  Value<int> uid,
+  Value<String> name,
+  Value<String> face,
+  Value<int?> lastVideoAid,
+  Value<DateTime?> lastSyncedAt,
+  Value<int> containerId,
+  Value<DateTime> addedAt,
+});
+
+class $$UpMastersTableFilterComposer
+    extends Composer<_$AppDatabase, $UpMastersTable> {
+  $$UpMastersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get face => $composableBuilder(
+      column: $table.face, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get lastVideoAid => $composableBuilder(
+      column: $table.lastVideoAid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+      column: $table.addedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$UpMastersTableOrderingComposer
+    extends Composer<_$AppDatabase, $UpMastersTable> {
+  $$UpMastersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get face => $composableBuilder(
+      column: $table.face, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get lastVideoAid => $composableBuilder(
+      column: $table.lastVideoAid,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+      column: $table.addedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$UpMastersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UpMastersTable> {
+  $$UpMastersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get uid =>
+      $composableBuilder(column: $table.uid, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get face =>
+      $composableBuilder(column: $table.face, builder: (column) => column);
+
+  GeneratedColumn<int> get lastVideoAid => $composableBuilder(
+      column: $table.lastVideoAid, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get containerId => $composableBuilder(
+      column: $table.containerId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+}
+
+class $$UpMastersTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $UpMastersTable,
+    UpMaster,
+    $$UpMastersTableFilterComposer,
+    $$UpMastersTableOrderingComposer,
+    $$UpMastersTableAnnotationComposer,
+    $$UpMastersTableCreateCompanionBuilder,
+    $$UpMastersTableUpdateCompanionBuilder,
+    (UpMaster, BaseReferences<_$AppDatabase, $UpMastersTable, UpMaster>),
+    UpMaster,
+    PrefetchHooks Function()> {
+  $$UpMastersTableTableManager(_$AppDatabase db, $UpMastersTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UpMastersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UpMastersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UpMastersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> uid = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String> face = const Value.absent(),
+            Value<int?> lastVideoAid = const Value.absent(),
+            Value<DateTime?> lastSyncedAt = const Value.absent(),
+            Value<int> containerId = const Value.absent(),
+            Value<DateTime> addedAt = const Value.absent(),
+          }) =>
+              UpMastersCompanion(
+            id: id,
+            uid: uid,
+            name: name,
+            face: face,
+            lastVideoAid: lastVideoAid,
+            lastSyncedAt: lastSyncedAt,
+            containerId: containerId,
+            addedAt: addedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int uid,
+            required String name,
+            Value<String> face = const Value.absent(),
+            Value<int?> lastVideoAid = const Value.absent(),
+            Value<DateTime?> lastSyncedAt = const Value.absent(),
+            required int containerId,
+            required DateTime addedAt,
+          }) =>
+              UpMastersCompanion.insert(
+            id: id,
+            uid: uid,
+            name: name,
+            face: face,
+            lastVideoAid: lastVideoAid,
+            lastSyncedAt: lastSyncedAt,
+            containerId: containerId,
+            addedAt: addedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$UpMastersTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $UpMastersTable,
+    UpMaster,
+    $$UpMastersTableFilterComposer,
+    $$UpMastersTableOrderingComposer,
+    $$UpMastersTableAnnotationComposer,
+    $$UpMastersTableCreateCompanionBuilder,
+    $$UpMastersTableUpdateCompanionBuilder,
+    (UpMaster, BaseReferences<_$AppDatabase, $UpMastersTable, UpMaster>),
+    UpMaster,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4177,4 +4860,6 @@ class $AppDatabaseManager {
       $$ContainersTableTableManager(_db, _db.containers);
   $$ContainerVideosTableTableManager get containerVideos =>
       $$ContainerVideosTableTableManager(_db, _db.containerVideos);
+  $$UpMastersTableTableManager get upMasters =>
+      $$UpMastersTableTableManager(_db, _db.upMasters);
 }
