@@ -9,6 +9,7 @@ import 'package:mikunotes/ui/screens/containers/import_dialog.dart';
 import 'package:mikunotes/ui/screens/containers/import_favorites.dart';
 import 'package:mikunotes/ui/screens/containers/batch_import.dart';
 import 'package:mikunotes/ui/screens/containers/settings_screen.dart';
+import 'package:mikunotes/ui/screens/containers/upmaster_search.dart';
 import 'package:mikunotes/ui/screens/containers/upmasters_tab.dart';
 import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
 
@@ -80,7 +81,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       ),
       floatingActionButton: _index == 0
           ? FloatingActionButton.extended(
-              onPressed: () => _showAddMenu(context, ref),
+              onPressed: () => _openManualImport(context),
               icon: const Icon(Icons.add),
               label: const Text('导入'),
             )
@@ -96,7 +97,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       icon: const Icon(Icons.watch_later),
                       label: const Text('导入稍后观看'),
                     )
-                  : null,
+                  : FloatingActionButton.extended(
+                      onPressed: () => _openUpMasterSearch(context),
+                      icon: const Icon(Icons.search),
+                      label: const Text('搜索 UP 主'),
+                    ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
@@ -132,53 +137,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  void _showAddMenu(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('选择导入方式',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.paste),
-              title: const Text('手动导入 (单视频)'),
-              subtitle: const Text('粘贴链接 / BV号, 会自动下载字幕'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showAddVideoDialog(context, ref);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.star),
-              title: const Text('从 B 站收藏夹导入'),
-              subtitle: const Text('批量勾选, 不下载字幕'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openImportFavorites(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.watch_later),
-              title: const Text('从 B 站稍后观看导入'),
-              subtitle: const Text('批量勾选, 不下载字幕'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openImportWatchLater(context);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+  void _openManualImport(BuildContext context) {
+    showAddVideoDialog(context, ref);
+  }
+
+  void _openUpMasterSearch(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const UpMasterSearchScreen()),
     );
   }
 

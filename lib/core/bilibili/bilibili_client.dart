@@ -522,4 +522,34 @@ class BilibiliClient {
       'hasMore': (data['has_more'] as bool?) ?? false,
     };
   }
+
+  /// 按名字搜索 UP 主 (B站 search/type API, search_type=upuser)
+  /// 返回: List<Map> 每项含: mid, name, face, fans, sign
+  Future<List<Map<String, dynamic>>> searchUpMasters(String keyword) async {
+    if (keyword.trim().isEmpty) return [];
+    try {
+      final resp = await _dio.get(
+        'https://api.bilibili.com/x/web-interface/search/type',
+        queryParameters: {
+          'search_type': 'upuser',
+          'keyword': keyword.trim(),
+          'page': 1,
+          'page_size': 20,
+        },
+      );
+      final list = resp.data?['data']?['result'];
+      if (list is! List) return [];
+      return list.map((m) {
+        return {
+          'mid': (m['mid'] as num?)?.toInt() ?? 0,
+          'name': m['uname'] as String? ?? '',
+          'face': m['upic'] as String? ?? '',
+          'fans': (m['fans'] as num?)?.toInt() ?? 0,
+          'sign': m['usign'] as String? ?? '',
+        };
+      }).where((m) => m['mid'] != 0).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }
