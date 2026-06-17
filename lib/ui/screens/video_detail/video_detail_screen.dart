@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
@@ -416,7 +417,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: MarkdownBody(
+                  child: MathMarkdownBody(
                     data: selected.content,
                     selectable: true,
                   ),
@@ -497,7 +498,7 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: MarkdownBody(
+            child: MathMarkdownBody(
               data: s.content,
               selectable: true,
               styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
@@ -1214,7 +1215,7 @@ class _ChatBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            MarkdownBody(
+            MathMarkdownBody(
               data: content.isEmpty ? (isStreaming ? '...' : ' ') : content,
               selectable: !isStreaming,
             ),
@@ -1438,3 +1439,4 @@ Widget _countOption(BuildContext c, int count, String label) {
       child: Text(label),
     );
   }
+// 📦 PARTFIX marker for the end of the file - to be replaced

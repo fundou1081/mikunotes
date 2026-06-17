@@ -171,12 +171,6 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
       appBar: AppBar(
         title: const Text('从稍后观看导入'),
         actions: [
-          if (!_loading && _selected.isNotEmpty)
-            TextButton.icon(
-              onPressed: _importing ? null : _importSelected,
-              icon: const Icon(Icons.checklist, size: 18),
-              label: Text('导入选中 (${_selected.length})'),
-            ),
           if (!_loading)
             TextButton.icon(
               onPressed: _importing ? null : _importAll,
@@ -262,6 +256,17 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
                   setState(() {});
                 },
                 child: const Text('全选未导入', style: TextStyle(fontSize: 12)),
+              ),
+            const SizedBox(width: 8),
+            if (_selected.isNotEmpty)
+              FilledButton.tonalIcon(
+                onPressed: _importSelected,
+                icon: const Icon(Icons.checklist, size: 16),
+                label: Text('${_selected.length}个', style: const TextStyle(fontSize: 12)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 28),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
           ]),
         ),
