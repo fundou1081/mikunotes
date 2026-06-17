@@ -483,4 +483,43 @@ class BilibiliClient {
     }
     return bvids;
   }
+
+  // ─── UP 主 API ──────────────────────────────────────────────
+
+  /// 获取 UP 主最新投稿 (WBI 签名)
+  /// 返回: {videos: [{bvid, title, cover, duration, aid}], total: int, hasMore: bool}
+  Future<Map<String, dynamic>> getUpMasterLatestVideos(int mid,
+      {int pn = 1, int ps = 20}) async {
+    await _ensureWbiKeys();
+    if (_wbiImgKey == null || _wbiSubKey == null) {
+      throw Exception('WBI 密钥获取失败, 无法获取 UP 主视频');
+    }
+    final signed = signWbi(
+      {'mid': mid, 'pn': pn, 'ps': ps, 'order': 'pubdate', 'platform': 'web', 'web_location': '1550101'},
+      _wbiImgKey!,
+      _wbiSubKey!,
+    );
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/space/wbi/arc/search',
+      queryParameters: signed,
+    );
+    final data = resp.data?['data'];
+    if (data is! Map) return {'videos': [], 'total': 0, 'hasMore': false};
+    final list = (data['list'] as List?)?.cast<Map>() ?? [];
+    final videos = list.map((m) {
+      return {
+        'bvid': m['bvid'] as String? ?? '',
+        'aid': (m['aid'] as num?)?.toInt() ?? 0,
+        'title': m['title'] as String? ?? '',
+        'cover': m['pic'] as String? ?? '',
+        'duration': (m['duration'] as num?)?.toInt() ?? 0,
+        'created': (m['created'] as num?)?.toInt() ?? 0, // unix ts
+      };
+    }).where((m) => (m['bvid'] as String).isNotEmpty).toList();
+    return {
+      'videos': videos,
+      'total': (data['page']?['count'] as num?)?.toInt() ?? 0,
+      'hasMore': (data['has_more'] as bool?) ?? false,
+    };
+  }
 }

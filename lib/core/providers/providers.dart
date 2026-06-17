@@ -613,3 +613,95 @@ class AllUpMasterVideosNotifier
     }
   }
 }
+
+/// UP 主同步结果 (新发布的视频列表)
+class UpMasterSyncResult {
+  final int uid;
+  final int newCount;     // 本次发现的新发布数
+  final List<String> newBvids; // 新发布的 bvid 列表
+  final int totalFromBili; // B站该UP主总视频数
+  final DateTime syncedAt;
+  final String? error;
+
+  UpMasterSyncResult({
+    required this.uid,
+    required this.newCount,
+    required this.newBvids,
+    required this.totalFromBili,
+    required this.syncedAt,
+    this.error,
+  });
+}
+
+/// UP 主同步 provider (按 uid family)
+final upMasterSyncProvider = StateNotifierProvider.family<
+    UpMasterSyncNotifier, AsyncValue<UpMasterSyncResult>, int>(
+  (ref, uid) => UpMasterSyncNotifier(ref, uid),
+);
+
+class UpMasterSyncNotifier extends StateNotifier<AsyncValue<UpMasterSyncResult>> {
+  UpMasterSyncNotifier(this._ref, this.uid)
+      : super(AsyncValue.data(UpMasterSyncResult(
+          uid: uid, newCount: 0, newBvids: [], totalFromBili: 0, syncedAt: DateTime.now(),
+        )));
+  final Ref _ref;
+  final int uid;
+
+  /// 拉 B 站 UP 主最新视频, 比对 lastVideoAid, 返回新发布列表
+  Future<UpMasterSyncResult> sync() async {
+    state = const AsyncValue.loading();
+    try {
+      final bili = _ref.read(bilibiliClientProvider);
+      final db = _ref.read(databaseProvider);
+      final um = await db.getUpMasterByUid(uid);
+      if (um == null) throw Exception('UP 主不存在');
+
+      // 拉最新 1 页 (20 个)
+      final result = await bili.getUpMasterLatestVideos(uid, pn: 1, ps: 20);
+      final videos = (result['videos'] as List).cast<Map>();
+      final totalFromBili = (result['total'] as num?)?.toInt() ?? 0;
+
+      // 找新发布的 (用 aid 倒序, 第一个 aid > lastVideoAid 就是新的)
+      int? maxAid = um.lastVideoAid;
+      final newBvids = <String>[];
+      for (final v in videos) {
+        final aid = (v['aid'] as num?)?.toInt() ?? 0;
+        final bvid = v['bvid'] as String? ?? '';
+        if (aid == 0 || bvid.isEmpty) continue;
+        if (maxAid == null) {
+          // 首次同步: 全算新发布
+          newBvids.add(bvid);
+        } else if (aid > maxAid) {
+          newBvids.add(bvid);
+        }
+      }
+
+      // 更新 lastVideoAid = 本次最大 aid
+      if (videos.isNotEmpty) {
+        final newLastAid = (videos.first['aid'] as num).toInt();
+        if (maxAid == null || newLastAid > maxAid) {
+          await db.updateUpMasterSync(uid, newLastAid);
+        }
+      }
+
+      final syncResult = UpMasterSyncResult(
+        uid: uid,
+        newCount: newBvids.length,
+        newBvids: newBvids,
+        totalFromBili: totalFromBili,
+        syncedAt: DateTime.now(),
+      );
+      state = AsyncValue.data(syncResult);
+      // 同步后刷新 UP 主列表和视频列表
+      _ref.read(upMasterListProvider.notifier).load();
+      _ref.read(allUpMasterVideosProvider.notifier).load();
+      return syncResult;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      return UpMasterSyncResult(
+        uid: uid, newCount: 0, newBvids: [],
+        totalFromBili: 0, syncedAt: DateTime.now(), error: e.toString(),
+      );
+    }
+  }
+}
