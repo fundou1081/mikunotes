@@ -1353,7 +1353,8 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
   @override
   void didUpdateWidget(covariant _SubtitleTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedLang != widget.selectedLang) {
+    if (oldWidget.selectedLang != widget.selectedLang ||
+        oldWidget.selectedPage != widget.selectedPage) {
       _loadSubtitle();
     }
   }
@@ -1361,9 +1362,11 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
   Future<void> _loadSubtitle() async {
     setState(() => _loading = true);
     final repo = ref.read(videoRepositoryProvider);
+    final page = widget.selectedPage == 0 ? null : widget.selectedPage;
     final sub = await repo.getSubtitle(
       widget.bvid,
       language: widget.selectedLang,
+      page: page,
     );
     if (mounted) setState(() {
       _subtitle = sub;
