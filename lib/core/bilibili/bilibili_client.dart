@@ -382,6 +382,38 @@ class BilibiliClient {
     };
   }
 
+  /// 获取收藏夹视频 (含元信息: 标题/封面/UP主)
+  /// 返回 List<Map> 每项含: bvid, title, cover, uploader, duration, pageCount
+  Future<Map<String, dynamic>> getFavVideosWithInfo(
+      int fid, {int pn = 1, int ps = 20}) async {
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/v3/fav/resource/list',
+      queryParameters: {
+        'media_id': fid,
+        'pn': pn,
+        'ps': ps,
+        'platform': 'web',
+      },
+    );
+    final data = resp.data?['data'];
+    if (data is! Map) {
+      return {'medias': [], 'has_more': false};
+    }
+    final medias = (data['medias'] as List? ?? []).map((m) {
+      final mm = m as Map;
+      return {
+        'bvid': mm['bvid'] as String? ?? '',
+        'title': mm['title'] as String? ?? '',
+        'cover': mm['cover'] as String? ?? '',
+        'uploader': (mm['upper'] as Map?)?['name'] as String? ?? '',
+        'duration': (mm['duration'] as num?)?.toInt() ?? 0,
+        'pageCount': (mm['page'] as num?)?.toInt() ?? 1,
+      };
+    }).where((m) => (m['bvid'] as String).isNotEmpty).toList();
+    final hasMore = (data['has_more'] as bool?) ?? false;
+    return {'medias': medias, 'has_more': hasMore};
+  }
+
   /// 获取指定收藏夹的所有视频 (最多 maxVideos 个)
   /// 返回 BV 号列表
   Future<List<String>> getAllFavBvids(int fid, {int maxVideos = 2000}) async {
@@ -406,8 +438,28 @@ class BilibiliClient {
 
   // ─── 稍后观看 API ──────────────────────────────────────────────
 
-  /// 获取 B站 稍后观看 列表
-  /// 返回 BV 号列表
+  /// 获取 B站稍后观看 (含元信息: 标题/封面/UP主)
+  Future<Map<String, dynamic>> getWatchLaterWithInfo({int pn = 1, int ps = 20}) async {
+    final resp = await _dio.get(
+      'https://api.bilibili.com/x/v2/history/toview',
+      queryParameters: {'pn': pn, 'ps': ps},
+    );
+    final list = resp.data?['data']?['list'];
+    if (list is! List) return {'videos': [], 'has_more': false};
+    final videos = list.map((item) {
+      final m = item as Map;
+      return {
+        'bvid': m['bvid'] as String? ?? '',
+        'title': m['title'] as String? ?? '',
+        'cover': m['pic'] as String? ?? '',
+        'uploader': (m['owner'] as Map?)?['name'] as String? ?? '',
+        'duration': '${(m['duration'] as num?)?.toInt() ?? 0}',
+      };
+    }).where((v) => (v['bvid'] as String).isNotEmpty).toList();
+    return {'videos': videos, 'has_more': videos.length >= ps};
+  }
+
+  /// 获取 B站稍后观看 (只返回 BV 号列表, legacy)
   Future<List<String>> getWatchLaterBvids({int maxPages = 50}) async {
     final bvids = <String>[];
     for (int pn = 1; pn <= maxPages; pn++) {
