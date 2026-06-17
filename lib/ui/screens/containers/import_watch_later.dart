@@ -133,6 +133,16 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
     await _doBatchImport(notImported.map((v) => v['bvid']!).toList());
   }
 
+  Future<void> _importSelected() async {
+    if (_selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先勾选视频')),
+      );
+      return;
+    }
+    await _doBatchImport(_selected.toList());
+  }
+
   Future<void> _doBatchImport(List<String> bvids) async {
     setState(() { _importing = true; _progress = 0; _progressTotal = bvids.length; });
     final repo = ref.read(videoRepositoryProvider);
@@ -146,11 +156,13 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
     });
     final s = (result['success'] as List).length;
     final f = (result['failed'] as List).length;
+    _existing.addAll((result['success'] as List).cast<String>());
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('✓ 成功 $s 个, 失败 $f 个'), duration: const Duration(seconds: 3)),
     );
     ref.read(containerListProvider.notifier).load();
     ref.read(videoListProvider.notifier).load();
+    ref.read(videosInContainerProvider(_containerId).notifier).load();
   }
 
   @override
@@ -159,6 +171,12 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
       appBar: AppBar(
         title: const Text('从稍后观看导入'),
         actions: [
+          if (!_loading && _selected.isNotEmpty)
+            TextButton.icon(
+              onPressed: _importing ? null : _importSelected,
+              icon: const Icon(Icons.checklist, size: 18),
+              label: Text('导入选中 (${_selected.length})'),
+            ),
           if (!_loading)
             TextButton.icon(
               onPressed: _importing ? null : _importAll,

@@ -169,6 +169,7 @@ class _ImportFavFolderScreenState extends ConsumerState<ImportFavFolderScreen> {
     setState(() {
       _importing = false;
       _existing.addAll((result['alreadyInDb'] as List).cast<String>());
+      _existing.addAll((result['success'] as List).cast<String>());
     });
     final s = (result['success'] as List).length;
     final f = (result['failed'] as List).length;
@@ -177,6 +178,8 @@ class _ImportFavFolderScreenState extends ConsumerState<ImportFavFolderScreen> {
     );
     ref.read(containerListProvider.notifier).load();
     ref.read(videoListProvider.notifier).load();
+    ref.read(allFavoriteVideosProvider.notifier).load();
+    ref.read(videosInContainerProvider(_containerId).notifier).load();
   }
 
   @override
