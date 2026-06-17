@@ -497,3 +497,119 @@ class AllFavoriteVideosNotifier
     }
   }
 }
+
+/// UP主信息 (UI 友好包装)
+class UpMasterInfo {
+  final int id;
+  final int uid;
+  final String name;
+  final String face;
+  final int? lastVideoAid;
+  final DateTime? lastSyncedAt;
+  final int containerId;
+  final DateTime addedAt;
+  final int importedCount;
+
+  UpMasterInfo({
+    required this.id,
+    required this.uid,
+    required this.name,
+    required this.face,
+    required this.lastVideoAid,
+    required this.lastSyncedAt,
+    required this.containerId,
+    required this.addedAt,
+    required this.importedCount,
+  });
+}
+
+/// 所有 UP 主列表
+final upMasterListProvider =
+    StateNotifierProvider<UpMasterListNotifier, AsyncValue<List<UpMasterInfo>>>(
+  (ref) => UpMasterListNotifier(ref),
+);
+
+class UpMasterListNotifier extends StateNotifier<AsyncValue<List<UpMasterInfo>>> {
+  UpMasterListNotifier(this._ref) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+
+  Future<void> load() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = _ref.read(databaseProvider);
+      final ums = await db.getAllUpMasters();
+      final result = <UpMasterInfo>[];
+      for (final um in ums) {
+        final imported = await db.countVideosInContainer(um.containerId);
+        result.add(UpMasterInfo(
+          id: um.id,
+          uid: um.uid,
+          name: um.name,
+          face: um.face,
+          lastVideoAid: um.lastVideoAid,
+          lastSyncedAt: um.lastSyncedAt,
+          containerId: um.containerId,
+          addedAt: um.addedAt,
+          importedCount: imported,
+        ));
+      }
+      state = AsyncValue.data(result);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+/// 跨所有 UP主容器的视频 (按 addedAt desc, 去重)
+final allUpMasterVideosProvider = StateNotifierProvider<AllUpMasterVideosNotifier,
+    AsyncValue<List<model.Video>>>(
+  (ref) => AllUpMasterVideosNotifier(ref),
+);
+
+class AllUpMasterVideosNotifier
+    extends StateNotifier<AsyncValue<List<model.Video>>> {
+  AllUpMasterVideosNotifier(this._ref) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+
+  Future<void> load() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = _ref.read(databaseProvider);
+      final containers = await db.getContainersByType('upmaster');
+      final allBvids = <String>{};
+      for (final c in containers) {
+        final bvids = await db.getBvidsInContainer(c.id);
+        allBvids.addAll(bvids);
+      }
+      if (allBvids.isEmpty) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+      final allVideos =
+          await (db.select(db.videos)..where((v) => v.bvid.isIn(allBvids.toList())))
+              .get();
+      final result = allVideos
+          .map((v) => model.Video(
+                id: v.bvid,
+                bvid: v.bvid,
+                title: v.title,
+                coverUrl: v.coverUrl,
+                uploader: v.uploader,
+                duration: v.duration,
+                pageCount: v.pageCount,
+                addedAt: v.addedAt,
+                tags: v.tags.isEmpty ? [] : v.tags.split(','),
+                aiTags: v.aiTags.isEmpty ? [] : v.aiTags.split(','),
+              ))
+          .toList();
+      result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
+      state = AsyncValue.data(result);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}

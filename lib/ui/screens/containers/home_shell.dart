@@ -9,9 +9,10 @@ import 'package:mikunotes/ui/screens/containers/import_dialog.dart';
 import 'package:mikunotes/ui/screens/containers/import_favorites.dart';
 import 'package:mikunotes/ui/screens/containers/batch_import.dart';
 import 'package:mikunotes/ui/screens/containers/settings_screen.dart';
+import 'package:mikunotes/ui/screens/containers/upmasters_tab.dart';
 import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
 
-/// 底部 3 Tab 容器: 📂 视频 / ⭐ 收藏夹 / ⏰ 稍后观看
+/// 底部 4 Tab 容器: 📂 视频 / ⭐ 收藏夹 / ⏰ 稍后观看 / 👤 UP 主
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -37,6 +38,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     ContainersHome(),    // 📂 视频
     FavoritesTab(),      // ⭐ 收藏夹
     WatchLaterTab(),     // ⏰ 稍后观看
+    UpMastersTab(),      // 👤 UP 主
   ];
 
   @override
@@ -88,11 +90,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   icon: const Icon(Icons.star),
                   label: const Text('导入收藏夹'),
                 )
-              : FloatingActionButton.extended(
-                  onPressed: () => _openImportWatchLater(context),
-                  icon: const Icon(Icons.watch_later),
-                  label: const Text('导入稍后观看'),
-                ),
+              : _index == 2
+                  ? FloatingActionButton.extended(
+                      onPressed: () => _openImportWatchLater(context),
+                      icon: const Icon(Icons.watch_later),
+                      label: const Text('导入稍后观看'),
+                    )
+                  : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
@@ -111,6 +115,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             icon: Icon(Icons.watch_later_outlined),
             selectedIcon: Icon(Icons.watch_later),
             label: '稍后观看',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'UP 主',
           ),
         ],
       ),
