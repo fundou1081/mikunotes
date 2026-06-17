@@ -19,29 +19,36 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
     try {
       final raw = await _storage.read(key: _kStorageKey);
       if (raw == null) {
-        // 首次启动: seed 内置模板
         state = PromptTemplateSet(
           summaries: builtInSummaryTemplates(),
           chats: builtInChatTemplates(),
+          comments: builtInCommentTemplates(),
           activeSummaryId: 'builtin-summary-default',
           activeChatId: 'builtin-chat-default',
+          activeCommentId: 'builtin-comment-community',
         );
         await _save();
       } else {
         state = PromptTemplateSet.fromJsonString(raw);
-        // 兼容: 补充缺失的内置模板
         final summaryIds = state.summaries.map((t) => t.id).toSet();
         final chatIds = state.chats.map((t) => t.id).toSet();
+        final commentIds = state.comments.map((t) => t.id).toSet();
         final missingSummary = builtInSummaryTemplates()
             .where((b) => !summaryIds.contains(b.id)).toList();
         final missingChat = builtInChatTemplates()
             .where((b) => !chatIds.contains(b.id)).toList();
-        if (missingSummary.isNotEmpty || missingChat.isNotEmpty) {
+        final missingComments = builtInCommentTemplates()
+            .where((b) => !commentIds.contains(b.id)).toList();
+        if (missingSummary.isNotEmpty ||
+            missingChat.isNotEmpty ||
+            missingComments.isNotEmpty) {
           state = PromptTemplateSet(
             summaries: [...state.summaries, ...missingSummary],
             chats: [...state.chats, ...missingChat],
+            comments: [...state.comments, ...missingComments],
             activeSummaryId: state.activeSummaryId ?? 'builtin-summary-default',
             activeChatId: state.activeChatId ?? 'builtin-chat-default',
+            activeCommentId: state.activeCommentId ?? 'builtin-comment-community',
           );
           await _save();
         }
@@ -50,8 +57,10 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
       state = PromptTemplateSet(
         summaries: builtInSummaryTemplates(),
         chats: builtInChatTemplates(),
+        comments: builtInCommentTemplates(),
         activeSummaryId: 'builtin-summary-default',
         activeChatId: 'builtin-chat-default',
+        activeCommentId: 'builtin-comment-community',
       );
     }
   }
@@ -60,7 +69,6 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
     await _storage.write(key: _kStorageKey, value: state.toJsonString());
   }
 
-  /// 添加模板（用户自定义）
   Future<PromptTemplate> addTemplate(TemplateType type, String name, String content) async {
     final t = PromptTemplate(
       id: 'user-${DateTime.now().microsecondsSinceEpoch}',
@@ -69,6 +77,8 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
     );
     if (type == TemplateType.summary) {
       state = state.copyWith(summaries: [...state.summaries, t]);
+    } else if (type == TemplateType.comment) {
+      state = state.copyWith(comments: [...state.comments, t]);
     } else {
       state = state.copyWith(chats: [...state.chats, t]);
     }
@@ -76,29 +86,39 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
     return t;
   }
 
-  /// 更新模板（不能改 isBuiltIn）
   Future<void> updateTemplate(TemplateType type, String id, {String? name, String? content}) async {
-    final list = type == TemplateType.summary ? state.summaries : state.chats;
+    List<PromptTemplate> list;
+    if (type == TemplateType.summary) list = state.summaries;
+    else if (type == TemplateType.comment) list = state.comments;
+    else list = state.chats;
     final updated = list.map((t) => t.id == id ? t.copyWith(name: name, content: content) : t).toList();
     if (type == TemplateType.summary) {
       state = state.copyWith(summaries: updated);
+    } else if (type == TemplateType.comment) {
+      state = state.copyWith(comments: updated);
     } else {
       state = state.copyWith(chats: updated);
     }
     await _save();
   }
 
-  /// 删除模板（不能删内置）
   Future<void> deleteTemplate(TemplateType type, String id) async {
-    final list = type == TemplateType.summary ? state.summaries : state.chats;
+    List<PromptTemplate> list;
+    if (type == TemplateType.summary) list = state.summaries;
+    else if (type == TemplateType.comment) list = state.comments;
+    else list = state.chats;
     final target = list.firstWhere((t) => t.id == id, orElse: () => const PromptTemplate(id: '', name: '', content: ''));
     if (target.id.isEmpty || target.isBuiltIn) return;
     final filtered = list.where((t) => t.id != id).toList();
     if (type == TemplateType.summary) {
       state = state.copyWith(
         summaries: filtered,
-        activeSummaryId:
-            state.activeSummaryId == id ? null : state.activeSummaryId,
+        activeSummaryId: state.activeSummaryId == id ? null : state.activeSummaryId,
+      );
+    } else if (type == TemplateType.comment) {
+      state = state.copyWith(
+        comments: filtered,
+        activeCommentId: state.activeCommentId == id ? null : state.activeCommentId,
       );
     } else {
       state = state.copyWith(
@@ -109,19 +129,22 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
     await _save();
   }
 
-  /// 设置激活模板
   Future<void> setActive(TemplateType type, String id) async {
     if (type == TemplateType.summary) {
       state = state.copyWith(activeSummaryId: id);
+    } else if (type == TemplateType.comment) {
+      state = state.copyWith(activeCommentId: id);
     } else {
       state = state.copyWith(activeChatId: id);
     }
     await _save();
   }
 
-  /// 按 ID 获取模板
   PromptTemplate? getById(TemplateType type, String id) {
-    final list = type == TemplateType.summary ? state.summaries : state.chats;
+    List<PromptTemplate> list;
+    if (type == TemplateType.summary) list = state.summaries;
+    else if (type == TemplateType.comment) list = state.comments;
+    else list = state.chats;
     for (final t in list) {
       if (t.id == id) return t;
     }

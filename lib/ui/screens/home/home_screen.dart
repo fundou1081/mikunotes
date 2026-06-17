@@ -949,7 +949,7 @@ class _TemplatesSectionState extends ConsumerState<_TemplatesSection>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -966,8 +966,9 @@ class _TemplatesSectionState extends ConsumerState<_TemplatesSection>
           TabBar(
             controller: _tab,
             tabs: const [
-              Tab(icon: Icon(Icons.summarize), text: '摘要模板'),
-              Tab(icon: Icon(Icons.chat_bubble_outline), text: '对话模板'),
+              Tab(icon: Icon(Icons.summarize), text: '摘要'),
+              Tab(icon: Icon(Icons.chat_bubble_outline), text: '对话'),
+              Tab(icon: Icon(Icons.comment), text: '评论'),
             ],
           ),
           SizedBox(
@@ -977,6 +978,7 @@ class _TemplatesSectionState extends ConsumerState<_TemplatesSection>
               children: [
                 _TemplateList(type: TemplateType.summary),
                 _TemplateList(type: TemplateType.chat),
+                _TemplateList(type: TemplateType.comment),
               ],
             ),
           ),

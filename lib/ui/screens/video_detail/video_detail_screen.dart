@@ -163,6 +163,23 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
   }
 
   Future<void> _showCommentAnalysis() async {
+    // 1. 问用户要拉多少条
+    final count = await showDialog<int>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: const Text('拉取多少条评论？'),
+        children: [
+          _countOption(c, 50, '50 条 (快速概览)'),
+          _countOption(c, 100, '100 条'),
+          _countOption(c, 300, '300 条'),
+          _countOption(c, 500, '500 条 (深度分析)'),
+          _countOption(c, -1, '全部 (可能较慢)'),
+        ],
+      ),
+    );
+    if (count == null) return; // 用户取消
+    final maxPages = count == -1 ? 100 : (count ~/ 20).clamp(1, 100);
+
     _showLoading('正在拉取评论...');
     try {
       // 从 B 站 API 拿 aid
@@ -178,7 +195,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         return;
       }
       final client = ref.read(commentClientProvider);
-      final result = await client.fetchComments(aid);
+      final result = await client.fetchComments(aid, maxPages: maxPages);
       if (!mounted) return;
       Navigator.pop(context);
       if (result.comments.isEmpty) {
@@ -190,14 +207,19 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       _showLoading('正在 AI 分析评论...');
       final config = ref.read(aiConfigProvider);
       final llmClient = ref.read(llmClientProvider);
+      final templates = ref.read(templatesProvider);
+      final activeComment = templates.activeComment;
+      final tpl = activeComment?.content ?? llm_tpl.communityCommentTemplate;
       final text = result.toText();
-      final input = text.length > 8000 ? '${text.substring(0, 8000)}...(已截断)' : text;
-      final prompt = '''你是社区洞察分析师。请从评论中提取：
-1.常见问题 2.补充信息 3.争议 4.整体情感 5.最有价值评论Top3
-
-视频${title}(共${result.total}条,采样${result.comments.length}条)\n\n$input''';
+      // 渲染模板变量
+      final prompt = llm_tpl.PromptTemplate.render(tpl, {
+        'video_title': title,
+        'total': '${result.total}',
+        'taken': '${result.comments.length}',
+        'text': text.length > 8000 ? '${text.substring(0, 8000)}...(已截断)' : text,
+      });
       final analysis = await llmClient.chat(
-        systemPrompt: '你是社区洞察分析师。',
+        systemPrompt: '你是视频评论分析助手。',
         userMessage: prompt,
         maxTokens: 2000,
         disableReasoning: true,
@@ -1410,3 +1432,9 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
     );
   }
 }
+Widget _countOption(BuildContext c, int count, String label) {
+    return SimpleDialogOption(
+      onPressed: () => Navigator.pop(c, count),
+      child: Text(label),
+    );
+  }

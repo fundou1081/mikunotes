@@ -23,7 +23,7 @@ class CommentClient {
 
   /// 拉视频评论（主评论 + 子评论）
   /// [oid] = aid, [maxPages] = 最多页数（每页 20 条）
-  Future<CommentResult> fetchComments(int aid, {int maxPages = 5}) async {
+  Future<CommentResult> fetchComments(int aid, {int maxPages = 15}) async {
     final allComments = <BilibiliComment>[];
     int totalCount = 0;
 
