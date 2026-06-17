@@ -1,17 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/ui/screens/containers/containers_home.dart';
+import 'package:mikunotes/ui/screens/containers/video_list.dart';
 
-/// ⏰ 稍后观看 Tab
-class WatchLaterTab extends ConsumerWidget {
+/// ⏰ 稍后观看 Tab - 视频列表 (无需 chip, 只有一个容器)
+class WatchLaterTab extends ConsumerStatefulWidget {
   const WatchLaterTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WatchLaterTab> createState() => _WatchLaterTabState();
+}
+
+class _WatchLaterTabState extends ConsumerState<WatchLaterTab> {
+  int? _containerId; // 实际 watch_later 容器 ID
+
+  @override
+  void initState() {
+    super.initState();
+    _loadContainer();
+  }
+
+  Future<void> _loadContainer() async {
+    final db = ref.read(databaseProvider);
+    final c = await (db.select(db.containers)
+          ..where((c) => c.type.equals('watch_later')))
+        .getSingleOrNull();
+    if (c != null && mounted) {
+      setState(() => _containerId = c.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bili = ref.watch(bilibiliClientProvider);
     final isLoggedIn = bili.isLoggedIn;
     final containersState = ref.watch(containerListProvider);
-    final cs = Theme.of(context).colorScheme;
 
     final watchLater = containersState.maybeWhen(
       data: (list) => list
@@ -23,11 +47,13 @@ class WatchLaterTab extends ConsumerWidget {
 
     return Column(
       children: [
+        // 顶部操作栏
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Text('稍后观看', style: Theme.of(context).textTheme.titleMedium),
+              Text('⏰ 稍后观看',
+                  style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               if (isLoggedIn)
                 IconButton(
@@ -38,13 +64,30 @@ class WatchLaterTab extends ConsumerWidget {
             ],
           ),
         ),
+        // 顶部统计
+        if (watchLater != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Row(
+              children: [
+                Text('B 站稍后观看 ${watchLater.totalCount}',
+                    style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 12),
+                Text('已导入 ${watchLater.importedCount}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary)),
+              ],
+            ),
+          ),
         const Divider(height: 1),
         Expanded(
           child: !isLoggedIn
               ? _buildNotLoggedIn(context)
-              : watchLater == null
+              : _containerId == null
                   ? _buildEmpty(context, ref)
-                  : _buildLoaded(context, ref, watchLater),
+                  : VideosInContainerView(containerId: _containerId!),
         ),
       ],
     );
@@ -95,57 +138,6 @@ class WatchLaterTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoaded(
-      BuildContext context, WidgetRef ref, ContainerInfo c) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          color: cs.surfaceContainerHighest,
-          child: Row(
-            children: [
-              const Icon(Icons.watch_later, size: 40, color: Colors.pink),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('稍后观看',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text('B 站稍后观看: ${c.totalCount} 个',
-                        style: TextStyle(color: cs.outline, fontSize: 12)),
-                    Text('已导入: ${c.importedCount}',
-                        style: TextStyle(color: cs.outline, fontSize: 12)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Spacer(),
-        const Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.engineering, size: 48, color: Colors.grey),
-              SizedBox(height: 12),
-              Text('Phase B 会加导入入口',
-                  style: TextStyle(color: Colors.grey, fontSize: 14)),
-              SizedBox(height: 4),
-              Text('Phase C 会加下载全部字幕',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
-            ],
-          ),
-        ),
-        const Spacer(),
-      ],
-    );
-  }
-
   Future<void> _sync(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -156,6 +148,7 @@ class WatchLaterTab extends ConsumerWidget {
         ),
       );
       await ref.read(containerListProvider.notifier).syncWatchLater();
+      await _loadContainer();
       messenger.showSnackBar(const SnackBar(content: Text('✓ 同步完成')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('✗ 同步失败: $e')));

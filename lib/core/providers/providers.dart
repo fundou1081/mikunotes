@@ -439,3 +439,54 @@ class VideosInContainerNotifier
     }
   }
 }
+
+/// 跨所有收藏夹容器的视频 (去重 + 按 addedAt 排序)
+final allFavoriteVideosProvider = StateNotifierProvider<AllFavoriteVideosNotifier,
+    AsyncValue<List<model.Video>>>(
+  (ref) => AllFavoriteVideosNotifier(ref),
+);
+
+class AllFavoriteVideosNotifier
+    extends StateNotifier<AsyncValue<List<model.Video>>> {
+  AllFavoriteVideosNotifier(this._ref) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+
+  Future<void> load() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = _ref.read(databaseProvider);
+      final containers = await db.getContainersByType('favorite');
+      final allBvids = <String>{};
+      for (final c in containers) {
+        final bvids = await db.getBvidsInContainer(c.id);
+        allBvids.addAll(bvids);
+      }
+      if (allBvids.isEmpty) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+      final allVideos =
+          await (db.select(db.videos)..where((v) => v.bvid.isIn(allBvids.toList())))
+              .get();
+      final result = allVideos
+          .map((v) => model.Video(
+                id: v.bvid,
+                bvid: v.bvid,
+                title: v.title,
+                coverUrl: v.coverUrl,
+                uploader: v.uploader,
+                duration: v.duration,
+                pageCount: v.pageCount,
+                addedAt: v.addedAt,
+                tags: v.tags.isEmpty ? [] : v.tags.split(','),
+              ))
+          .toList();
+      result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
+      state = AsyncValue.data(result);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}

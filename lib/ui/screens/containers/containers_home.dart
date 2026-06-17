@@ -117,6 +117,29 @@ class VideosInContainerView extends ConsumerWidget {
                 ref
                     .read(videosInContainerProvider(containerId).notifier)
                     .load();
+                ref.read(containerListProvider.notifier).load();
+              }, onDeleted: () async {
+                // 物理删除: 同时刷新该容器 + 容器列表 (chip 数字)
+                await ref
+                    .read(videoListProvider.notifier)
+                    .deleteVideo(v.bvid);
+                ref
+                    .read(videosInContainerProvider(containerId).notifier)
+                    .load();
+                ref.read(containerListProvider.notifier).load();
+              }, onRemoved: () async {
+                // 移出此容器: 刷新该容器 + 容器列表
+                final db1Local = ref.read(databaseProvider);
+                await db1Local.removeVideoFromContainer(containerId, v.bvid);
+                ref
+                    .read(videosInContainerProvider(containerId).notifier)
+                    .load();
+                ref.read(containerListProvider.notifier).load();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('✓ 已移出此收藏夹')),
+                  );
+                }
               });
             },
           ),
