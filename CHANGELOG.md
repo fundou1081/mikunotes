@@ -53,3 +53,33 @@
 - [ ] Markdown rendering
 - [ ] Cluster graph visualization (Phase 3)
 - [ ] Share intent receiver (B站 links)
+
+## [0.4.0] - 2026-06-17
+
+### Added
+- **3 平行容器架构**: 手动 / 收藏夹 / 稍后观看
+  - 视频可多对多属于多个容器
+  - DB schema v4: containers + container_videos 表
+  - 底部 3 Tab Bar (📂 视频 / ⭐ 收藏夹 / ⏰ 稍后观看)
+- **收藏夹批量导入** (Phase 2):
+  - 选文件夹 → 全选未导入 / 勾选 / 搜索
+  - 智能跳过已入库视频
+  - 进度条 + 失败统计
+- **稍后观看批量导入**: B 站 `/x/v2/history/toview` 同步
+- **下载全部字幕**: 收藏夹文件夹内一键下载
+  - 智能过滤已有字幕
+  - 进度条 + 成功/失败 + 可中断
+- **5s 撤销机制** (Phase 3):
+  - 移出此收藏夹 → 5s 内可撤销 (备份 addedAt)
+  - 彻底删除 → 5s 内可恢复 (备份 video + subtitles + summaries + container links)
+- **新增 Future 需求 #4-A** (记下, 以后考虑): 收藏夹/稍后观看双向同步 B 站原站
+
+### Changed
+- 主页重构: HomeScreen → HomeShell (3 Tab + IndexedStack)
+- 导入策略: 手动导入仍自动下字幕, 收藏夹/稍后观看**不自动下**, 用户手动下
+- Container widget name collision: 全部加 `db.` 前缀
+
+### Fixed
+- 移出某容器 vs 彻底删除 语义分离 (前者不删数据, 后者全删)
+- 移出后 5s 撤销保留原 addedAt 时间
+- 收藏夹/稍后观看 同步时强制刷新统计
