@@ -225,6 +225,9 @@ class VideoRepository {
               tags: r.tags.isEmpty
                   ? const []
                   : r.tags.split(',').map((t) => t.trim()).toList(),
+              aiTags: r.aiTags.isEmpty
+                  ? const []
+                  : r.aiTags.split(',').map((t) => t.trim()).toList(),
             ))
         .toList();
   }

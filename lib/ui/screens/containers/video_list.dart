@@ -307,6 +307,48 @@ class _VideoListItemState extends ConsumerState<VideoListItem> {
                         ),
                       ],
                     ),
+                    // Tag chips (original + AI)
+                    if (v.allTags.isNotEmpty)
+                      SizedBox(
+                        height: 28,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            for (final t in v.allTags)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: v.aiTags.contains(t)
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .tertiaryContainer
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    t,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: v.aiTags.contains(t)
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .onTertiaryContainer
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.7),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),

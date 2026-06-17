@@ -481,6 +481,7 @@ class AllFavoriteVideosNotifier
                 pageCount: v.pageCount,
                 addedAt: v.addedAt,
                 tags: v.tags.isEmpty ? [] : v.tags.split(','),
+                aiTags: v.aiTags.isEmpty ? [] : v.aiTags.split(','),
               ))
           .toList();
       result.sort((a, b) => b.addedAt.compareTo(a.addedAt));

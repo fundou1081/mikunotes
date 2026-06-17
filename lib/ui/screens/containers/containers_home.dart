@@ -66,13 +66,113 @@ class _ContainersHomeState extends ConsumerState<ContainersHome> {
   }
 }
 
-/// 全部视频视图 (用现有的 VideoList 组件)
-class _AllVideosView extends ConsumerWidget {
+/// 全部视频视图 + tag 过滤 chips
+class _AllVideosView extends ConsumerStatefulWidget {
   const _AllVideosView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return const VideoList();
+  ConsumerState<_AllVideosView> createState() => _AllVideosViewState();
+}
+
+class _AllVideosViewState extends ConsumerState<_AllVideosView> {
+  Set<String> _tagFilter = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final videosState = ref.watch(videoListProvider);
+    final db1 = ref.watch(databaseProvider);
+
+    return videosState.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('错误: $e')),
+      data: (videos) {
+        // 收集所有唯一 tag
+        final allTags = <String>{};
+        for (final v in videos) {
+          allTags.addAll(v.allTags);
+        }
+        final tagList = allTags.toList()..sort();
+
+        // 过滤视频
+        final filtered = _tagFilter.isEmpty
+            ? videos
+            : videos.where((v) => v.allTags.any((t) => _tagFilter.contains(t))).toList();
+
+        return Column(
+          children: [
+            // Tag 过滤 chips
+            if (tagList.isNotEmpty)
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  children: [
+                    _tagChip(
+                        label: '全部 ${videos.length}',
+                        selected: _tagFilter.isEmpty,
+                        onSelected: (_) => setState(() => _tagFilter = {})),
+                    ...tagList.map((t) => Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: _tagChip(
+                            label: t,
+                            selected: _tagFilter.contains(t),
+                            onSelected: (sel) => setState(() {
+                              if (sel) {
+                                _tagFilter.add(t);
+                              } else {
+                                _tagFilter.remove(t);
+                              }
+                            }),
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            if (tagList.isNotEmpty) const Divider(height: 1),
+            Expanded(
+              child: filtered.isEmpty
+                  ? const Center(
+                      child: Text('没有匹配的视频',
+                          style: TextStyle(color: Colors.grey)))
+                  : RefreshIndicator(
+                      onRefresh: () =>
+                          ref.read(videoListProvider.notifier).load(),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final v = filtered[index];
+                          return VideoListItem(
+                            video: v,
+                            database: db1,
+                            onSubtitleDownloaded: () => ref
+                                .read(videoListProvider.notifier)
+                                .load(),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tagChip({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    return FilterChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      selected: selected,
+      onSelected: onSelected,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
   }
 }
 
