@@ -508,4 +508,53 @@ class VideoRepository {
           }),
     ];
   }
+
+  /// 批量添加视频到指定容器 (不下字幕, 用于收藏夹/稍后观看批量导入)
+  /// 返回 {success: [bvid], failed: [{bvid, error}]}
+  Future<Map<String, List<dynamic>>> batchAddToContainer(
+    List<String> bvids,
+    int containerId, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final success = <String>[];
+    final failed = <Map<String, String>>[];
+    final alreadyInDb = <String>[];
+
+    for (var i = 0; i < bvids.length; i++) {
+      final bvid = bvids[i];
+      onProgress?.call(i + 1, bvids.length);
+      try {
+        // 先看 DB 里有没有
+        var existing = await _db.getVideo(bvid);
+        if (existing == null) {
+          // 从 B 站拉元信息
+          final info = await _bili.getVideoInfo(bvid);
+          final aid = (info['aid'] as num?)?.toInt() ?? 0;
+          final title = info['title'] as String? ?? bvid;
+          final cover = info['pic'] as String? ?? '';
+          final uploader = (info['owner'] as Map?)?['name'] as String? ?? '';
+          final duration = (info['duration'] as num?)?.toInt() ?? 0;
+          final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
+          await _db.upsertVideo(VideosCompanion.insert(
+            bvid: bvid,
+            title: title,
+            coverUrl: drift.Value(cover),
+            uploader: drift.Value(uploader),
+            aid: aid,
+            duration: drift.Value(duration),
+            pageCount: drift.Value(pages.length),
+            addedAt: DateTime.now(),
+          ));
+        } else {
+          alreadyInDb.add(bvid);
+        }
+        // 加入容器
+        await _db.addVideoToContainer(containerId, bvid);
+        success.add(bvid);
+      } catch (e) {
+        failed.add({'bvid': bvid, 'error': e.toString()});
+      }
+    }
+    return {'success': success, 'failed': failed, 'alreadyInDb': alreadyInDb};
+  }
 }
