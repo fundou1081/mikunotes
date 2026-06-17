@@ -1,45 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:markdown/markdown.dart' as md;
 
-/// Detect $...$ inline math in Markdown, render with monospace style.
-/// Only matches when content has a LaTeX command (backslash) - prevents
-/// false positives like 'Price $5' or 'shell $var'.
-class MathInlineSyntax extends md.InlineSyntax {
-  MathInlineSyntax() : super(r'\$([^$\n\\]*\\[^$\n]+)\$');
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    final element = md.Element.text('math-inline', match.group(1)!);
-    parser.addNode(element);
-    return true;
-  }
-}
-
-class MathElementBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.grey.withOpacity(0.15)),
-      ),
-      child: Text(
-        element.textContent,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          height: 1.3,
-        ),
-      ),
-    );
-  }
-}
-
-/// Markdown widget with $...$ math rendering support
+/// 摘要 markdown 渲染: 把 $...$ 数学公式转成内联代码 (避开了
+/// 自定义 InlineSyntax 跟 GFM 解析器的冲突, 保证整段 markdown 渲染正常)
 class MathMarkdownBody extends StatelessWidget {
   final String data;
   final bool selectable;
@@ -51,20 +14,21 @@ class MathMarkdownBody extends StatelessWidget {
     this.styleSheet,
   });
 
+  /// 把 $...$ 转成内联代码, 让 MarkdownBody 渲染为等宽灰底
+  /// 避免引入自定义 InlineSyntax 破坏 GFM 解析
+  String _processMath(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'\$([^$\n]+?)\$'),
+      (m) => '`${m.group(1)}`',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Markdown(
-      data: data,
+    return MarkdownBody(
+      data: _processMath(data),
       selectable: selectable,
       styleSheet: styleSheet,
-      builders: {'math-inline': MathElementBuilder()},
-      extensionSet: md.ExtensionSet(
-        md.ExtensionSet.gitHubFlavored.blockSyntaxes,
-        [
-          ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
-          MathInlineSyntax(),
-        ],
-      ),
     );
   }
 }
