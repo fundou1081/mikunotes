@@ -29,23 +29,18 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
         await _save();
       } else {
         state = PromptTemplateSet.fromJsonString(raw);
-        // 兼容: 如果内置模板缺失,补充
-        final haveBuiltinSummary = state.summaries.any((t) => t.isBuiltIn);
-        final haveBuiltinChat = state.chats.any((t) => t.isBuiltIn);
-        if (!haveBuiltinSummary || !haveBuiltinChat) {
+        // 兼容: 补充缺失的内置模板
+        final summaryIds = state.summaries.map((t) => t.id).toSet();
+        final chatIds = state.chats.map((t) => t.id).toSet();
+        final missingSummary = builtInSummaryTemplates()
+            .where((b) => !summaryIds.contains(b.id)).toList();
+        final missingChat = builtInChatTemplates()
+            .where((b) => !chatIds.contains(b.id)).toList();
+        if (missingSummary.isNotEmpty || missingChat.isNotEmpty) {
           state = PromptTemplateSet(
-            summaries: [
-              ...state.summaries,
-              ...builtInSummaryTemplates()
-                  .where((b) => !state.summaries.any((s) => s.id == b.id)),
-            ],
-            chats: [
-              ...state.chats,
-              ...builtInChatTemplates()
-                  .where((b) => !state.chats.any((c) => c.id == b.id)),
-            ],
-            activeSummaryId:
-                state.activeSummaryId ?? 'builtin-summary-default',
+            summaries: [...state.summaries, ...missingSummary],
+            chats: [...state.chats, ...missingChat],
+            activeSummaryId: state.activeSummaryId ?? 'builtin-summary-default',
             activeChatId: state.activeChatId ?? 'builtin-chat-default',
           );
           await _save();
