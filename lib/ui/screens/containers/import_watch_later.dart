@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/ui/screens/containers/home_shell.dart';
 
 /// 从 B 站稍后观看批量导入
 class ImportWatchLaterScreen extends ConsumerStatefulWidget {
@@ -92,15 +93,25 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
     });
     final success = (result['success'] as List).length;
     final failed = (result['failed'] as List).length;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✓ 成功 $success 个, 失败 $failed 个'),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 成功 $success 个, 失败 $failed 个'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: '去查看',
+            onPressed: () {
+              // pop 退出 ImportWatchLaterScreen → HomeShell
+              Navigator.of(context).pop();
+              // 切换到 ⏰ 稍后观看 Tab (index=2)
+              HomeShell.tabKey.currentState?.switchToTab(2);
+            },
+          ),
+        ),
+      );
+    }
     ref.read(containerListProvider.notifier).load();
     ref.read(videoListProvider.notifier).load();
-    if (mounted) Navigator.pop(context);
   }
 
   @override

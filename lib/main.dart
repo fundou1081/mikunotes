@@ -19,7 +19,7 @@ class MikuNotesApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
       debugShowCheckedModeBanner: false,
-      home: const HomeShell(),
+      home: HomeShell(key: HomeShell.tabKey),
     );
   }
 }

@@ -15,12 +15,23 @@ import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
+  /// 静态 GlobalKey, 用于从其他页面切换 Tab
+  /// 使用: HomeShell.tabKey.currentState?.switchToTab(1);
+  static final GlobalKey<_HomeShellState> tabKey =
+      GlobalKey<_HomeShellState>();
+
   @override
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+
+  /// 从外部调用切换 Tab
+  void switchToTab(int i) {
+    if (!mounted) return;
+    setState(() => _index = i);
+  }
 
   static const _pages = [
     ContainersHome(),    // 📂 视频

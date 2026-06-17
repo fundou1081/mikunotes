@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/providers/providers.dart';
+import 'package:mikunotes/ui/screens/containers/home_shell.dart';
 
 /// 从 B 站收藏夹批量导入
 /// Step 1: 选文件夹
@@ -270,16 +271,27 @@ class _ImportFavFolderScreenState extends ConsumerState<ImportFavFolderScreen> {
     });
     final success = (result['success'] as List).length;
     final failed = (result['failed'] as List).length;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✓ 成功 $success 个, 失败 $failed 个'),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    // 不立刻 pop, 让用户看到状态变化 (已选 BV 变灰)
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 成功 $success 个, 失败 $failed 个'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: '去查看',
+            onPressed: () {
+              // pop 退出 ImportFavFolderScreen + ImportFavoritesScreen
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+              // 切换到 ⭐ 收藏夹 Tab (index=1)
+              HomeShell.tabKey.currentState?.switchToTab(1);
+            },
+          ),
+        ),
+      );
+    }
     ref.read(containerListProvider.notifier).load();
     ref.read(videoListProvider.notifier).load();
-    // 跳回上一页
-    if (mounted) Navigator.pop(context);
   }
 
   @override
