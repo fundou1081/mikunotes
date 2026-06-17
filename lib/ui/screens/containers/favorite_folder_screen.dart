@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
+import 'package:drift/drift.dart' as drift show Value;
+import 'package:mikunotes/ui/screens/containers/undo_snackbar.dart';
 import 'package:mikunotes/ui/screens/containers/video_list.dart';
 
 /// 进入某个收藏夹文件夹 — 显示已导入的视频
@@ -53,8 +55,16 @@ class FavoriteFolderScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(containerName),
         actions: [
-          // 顶部"下载全部字幕"按钮 (Phase C 加)
-          // 现在先留空
+          // 下载全部字幕按钮 (Phase C)
+          if (videosState.maybeWhen(
+            data: (vs) => vs.isNotEmpty,
+            orElse: () => false,
+          ))
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: '下载全部字幕',
+              onPressed: () => _downloadAllSubtitles(context, ref),
+            ),
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'remove_all') {
@@ -160,16 +170,38 @@ class FavoriteFolderScreen extends ConsumerWidget {
   Future<void> _removeFromContainer(
       BuildContext context, WidgetRef ref, String bvid) async {
     final db1 = ref.read(databaseProvider);
-    final messenger = ScaffoldMessenger.of(context);
+    // 备份: 查原有的 addedAt 以便撤销
+    final originalRow = await (db1.select(db1.containerVideos)
+          ..where((cv) => cv.containerId.equals(containerId))
+          ..where((cv) => cv.bvid.equals(bvid)))
+        .getSingleOrNull();
+    if (originalRow == null) return;
+    final originalAddedAt = originalRow.addedAt;
+
     await db1.removeVideoFromContainer(containerId, bvid);
     ref.read(videosInContainerProvider(containerId).notifier).load();
     ref.read(containerListProvider.notifier).load();
-    messenger.showSnackBar(const SnackBar(content: Text('✓ 已移出此收藏夹')));
+    showUndoSnackBar(
+      context,
+      '✓ 已移出此收藏夹',
+      onUndo: () async {
+        await db1.addVideoToContainer(containerId, bvid, addedAt: originalAddedAt);
+        ref.read(videosInContainerProvider(containerId).notifier).load();
+        ref.read(containerListProvider.notifier).load();
+      },
+    );
   }
 
   Future<void> _deleteVideo(
       BuildContext context, WidgetRef ref, String bvid) async {
     final messenger = ScaffoldMessenger.of(context);
+    final db1 = ref.read(databaseProvider);
+    // 备份: 视频、字幕、总结
+    final video = await db1.getVideo(bvid);
+    final subs = await db1.getSubtitlesForVideo(bvid);
+    final sums = await db1.getSummariesForVideo(bvid);
+    final containerLinks = await db1.getContainersForBvid(bvid);
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -191,7 +223,63 @@ class FavoriteFolderScreen extends ConsumerWidget {
     await ref.read(videoListProvider.notifier).deleteVideo(bvid);
     ref.read(videosInContainerProvider(containerId).notifier).load();
     ref.read(containerListProvider.notifier).load();
-    messenger.showSnackBar(const SnackBar(content: Text('✓ 已删除')));
+    showUndoSnackBar(
+      context,
+      '✓ 已彻底删除',
+      onUndo: () async {
+        if (video == null) return;
+        // 恢复视频
+        await db1.upsertVideo(db.VideosCompanion.insert(
+          bvid: video.bvid,
+          title: video.title,
+          coverUrl: drift.Value(video.coverUrl),
+          uploader: drift.Value(video.uploader),
+          aid: video.aid,
+          duration: drift.Value(video.duration),
+          pageCount: drift.Value(video.pageCount),
+          addedAt: video.addedAt,
+          tags: drift.Value(video.tags),
+          aiTags: drift.Value(video.aiTags),
+        ));
+        // 恢复字幕
+        for (final s in subs) {
+          await db1.upsertSubtitle(db.SubtitlesCompanion.insert(
+            bvid: s.bvid,
+            pageNum: drift.Value(s.pageNum),
+            language: s.language,
+            rawJson: s.rawJson,
+            plainText: s.plainText,
+            charCount: drift.Value(s.charCount),
+            entryCount: drift.Value(s.entryCount),
+            downloadedAt: s.downloadedAt,
+          ));
+        }
+        // 恢复总结
+        for (final s in sums) {
+          await db1.saveSummary(db.SummariesCompanion.insert(
+            id: s.id,
+            bvid: s.bvid,
+            title: drift.Value(s.title),
+            type: s.type,
+            content: s.content,
+            modelUsed: drift.Value(s.modelUsed),
+            promptUsed: drift.Value(s.promptUsed),
+            targetTopic: drift.Value(s.targetTopic),
+            createdAt: s.createdAt,
+          ));
+        }
+        // 恢复容器关联
+        for (final c in containerLinks) {
+          await db1.addVideoToContainer(c.id, bvid);
+        }
+        ref.read(videosInContainerProvider(containerId).notifier).load();
+        ref.read(containerListProvider.notifier).load();
+        ref.read(videoListProvider.notifier).load();
+        messenger.showSnackBar(
+          const SnackBar(content: Text('✓ 已恢复')),
+        );
+      },
+    );
   }
 
   Future<void> _removeAll(BuildContext context, WidgetRef ref) async {
@@ -227,6 +315,127 @@ class FavoriteFolderScreen extends ConsumerWidget {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('✓ 已移出 ${bvids.length} 个视频')));
+    }
+  }
+
+  /// 批量下载字幕 (Phase C)
+  Future<void> _downloadAllSubtitles(
+      BuildContext context, WidgetRef ref) async {
+    final db1 = ref.read(databaseProvider);
+    final bvids = await db1.getBvidsInContainer(containerId);
+    if (bvids.isEmpty) return;
+
+    // 过滤出没有字幕的
+    final needsDownload = <String>[];
+    for (final bvid in bvids) {
+      final subs = await db1.getSubtitlesForVideo(bvid);
+      if (subs.isEmpty) needsDownload.add(bvid);
+    }
+
+    if (needsDownload.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('所有视频都已有字幕 ✓')),
+      );
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('下载全部字幕?'),
+        content: Text(
+            '将逐个下载 ${needsDownload.length} 个视频的字幕。\n\n可能需要几分钟。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('开始下载'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (!context.mounted) return;
+
+    // 进度 dialog
+    final progressNotifier = ValueNotifier<int>(0);
+    int successCount = 0;
+    int failCount = 0;
+    String? failDetail;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        title: const Text('下载字幕中...'),
+        content: ValueListenableBuilder<int>(
+          valueListenable: progressNotifier,
+          builder: (_, progress, __) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('$progress / ${needsDownload.length}'),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: 240,
+                  child: LinearProgressIndicator(
+                    value: needsDownload.isEmpty
+                        ? 0
+                        : progress / needsDownload.length,
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('成功 $successCount  失败 $failCount',
+                    style: const TextStyle(fontSize: 12)),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              progressNotifier.value = -1; // 标记取消
+            },
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+
+    final repo = ref.read(videoRepositoryProvider);
+    for (var i = 0; i < needsDownload.length; i++) {
+      // 检查是否被取消
+      if (progressNotifier.value == -1) {
+        Navigator.of(context, rootNavigator: true).pop();
+        break;
+      }
+      final bvid = needsDownload[i];
+      try {
+        await repo.downloadAndStoreSubtitle(bvid);
+        successCount++;
+      } catch (e) {
+        failCount++;
+        failDetail = '$bvid: $e';
+      }
+      progressNotifier.value = i + 1;
+    }
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      ref
+          .read(videosInContainerProvider(containerId).notifier)
+          .load();
+      ref.read(containerListProvider.notifier).load();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 成功 $successCount, 失败 $failCount'
+              '${failDetail != null ? '\n首个失败: $failDetail' : ''}'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 }
