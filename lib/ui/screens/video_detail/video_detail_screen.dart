@@ -394,8 +394,10 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: SelectableText(selected.content,
-                      style: Theme.of(context).textTheme.bodyMedium),
+                  child: MarkdownBody(
+                    data: selected.content,
+                    selectable: true,
+                  ),
                 ),
               ),
             ],
@@ -473,9 +475,14 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: SelectableText(
-              s.content,
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: MarkdownBody(
+              data: s.content,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                h1: Theme.of(context).textTheme.headlineSmall,
+                h2: Theme.of(context).textTheme.titleMedium,
+                h3: Theme.of(context).textTheme.titleSmall,
+              ),
             ),
           ),
         ),
