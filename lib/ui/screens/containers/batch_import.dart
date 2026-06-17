@@ -1,17 +1,36 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/providers/providers.dart';
 
-/// 从 B 站稍后观看批量导入 — 显示视频卡片, 一键导入 / 选择性导入
-class ImportWatchLaterScreen extends ConsumerStatefulWidget {
-  const ImportWatchLaterScreen({super.key});
-  @override
-  ConsumerState<ImportWatchLaterScreen> createState() => _ImportWatchLaterScreenState();
+/// 批量导入页配置
+class BatchImportConfig {
+  final String appBarTitle;
+  final String hintText; // "收藏夹" / "稍后观看"
+  final Future<int> Function() resolveContainerId;
+  final Future<List<Map<String, String>>> Function(int page, int pageSize) loadPage;
+  final int? totalCount; // null = unknown (稍后观看: 边拉边算)
+  final Future<void> Function()? onSync; // 首次进入前同步
+
+  const BatchImportConfig({
+    required this.appBarTitle,
+    required this.hintText,
+    required this.resolveContainerId,
+    required this.loadPage,
+    this.totalCount,
+    this.onSync,
+  });
 }
 
-class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen> {
+/// 通用批量导入页: 显示视频卡片, 一键导入 / 选择性导入
+class BatchImportScreen extends ConsumerStatefulWidget {
+  final BatchImportConfig config;
+  const BatchImportScreen({super.key, required this.config});
+
+  @override
+  ConsumerState<BatchImportScreen> createState() => _BatchImportScreenState();
+}
+
+class _BatchImportScreenState extends ConsumerState<BatchImportScreen> {
   List<Map<String, String>> _videos = [];
   Set<String> _existing = {};
   Set<String> _selected = {};
@@ -43,25 +62,14 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
   Future<void> _initLoad() async {
     setState(() { _loading = true; _error = null; });
     try {
-      await ref.read(containerListProvider.notifier).syncWatchLater();
+      await widget.config.onSync?.call();
+      _containerId = await widget.config.resolveContainerId();
       final db = ref.read(databaseProvider);
-      final c = await (db.select(db.containers)..where((c) => c.type.equals('watch_later'))).getSingleOrNull();
-      if (c == null) throw Exception('稍后观看容器创建失败');
-      _containerId = c.id;
-      final allVids = await db.getAllVideos();
-      _existing = allVids.map((v) => v.bvid).toSet();
-      final bili = ref.read(bilibiliClientProvider);
-      final result = await bili.getWatchLaterWithInfo(pn: 1, ps: 20);
-      final videos = (result['videos'] as List<Map>).map((m) => {
-        'bvid': m['bvid'] as String,
-        'title': m['title'] as String,
-        'cover': m['cover'] as String,
-        'uploader': m['uploader'] as String,
-        'duration': m['duration'] as String,
-      }).toList();
+      _existing = (await db.getAllVideos()).map((v) => v.bvid).toSet();
+      final result = await widget.config.loadPage(1, 20);
       setState(() {
-        _videos = videos;
-        _hasMore = result['has_more'] as bool;
+        _videos = result;
+        _hasMore = result.length >= 20;
         _page = 1;
         _loading = false;
       });
@@ -71,8 +79,8 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
   }
 
   void _onScroll() {
-    if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200 &&
-        !_loadingMore && _hasMore) {
+    final p = _scroll.position;
+    if (p.pixels > p.maxScrollExtent - 200 && !_loadingMore && _hasMore) {
       _loadMore();
     }
   }
@@ -80,18 +88,10 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
   Future<void> _loadMore() async {
     setState(() => _loadingMore = true);
     try {
-      final bili = ref.read(bilibiliClientProvider);
-      final result = await bili.getWatchLaterWithInfo(pn: _page + 1, ps: 20);
-      final videos = (result['videos'] as List<Map>).map((m) => {
-        'bvid': m['bvid'] as String,
-        'title': m['title'] as String,
-        'cover': m['cover'] as String,
-        'uploader': m['uploader'] as String,
-        'duration': m['duration'] as String,
-      }).toList();
+      final result = await widget.config.loadPage(_page + 1, 20);
       setState(() {
-        _videos.addAll(videos);
-        _hasMore = result['has_more'] as bool;
+        _videos.addAll(result);
+        _hasMore = result.length >= 20;
         _page++;
         _loadingMore = false;
       });
@@ -102,16 +102,19 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
 
   List<Map<String, String>> get _filtered {
     if (_search.isEmpty) return _videos;
-    return _videos.where((v) =>
-        v['bvid']!.toLowerCase().contains(_search.toLowerCase()) ||
-        v['title']!.toLowerCase().contains(_search.toLowerCase())).toList();
+    return _videos.where((v) {
+      final b = v['bvid']!; final t = v['title']!;
+      return b.toLowerCase().contains(_search.toLowerCase()) ||
+             t.toLowerCase().contains(_search.toLowerCase());
+    }).toList();
   }
 
   int get _totalNotImported =>
       _videos.where((v) => !_existing.contains(v['bvid'])).length;
 
   Future<void> _importAll() async {
-    final notImported = _videos.where((v) => !_existing.contains(v['bvid'])).toList();
+    final notImported = _videos
+        .where((v) => !_existing.contains(v['bvid'])).toList();
     if (notImported.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('所有视频都已导入 ✓')),
@@ -122,10 +125,12 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('一键导入?'),
-        content: Text('将导入 ${notImported.length} 个未导入视频。\n\n不会下载字幕。'),
+        content: Text('将导入 ${notImported.length} 个视频。\n\n不会下载字幕。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('导入')),
+          TextButton(onPressed: () => Navigator.pop(c, false),
+              child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, true),
+              child: const Text('导入')),
         ],
       ),
     );
@@ -146,30 +151,35 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
   Future<void> _doBatchImport(List<String> bvids) async {
     setState(() { _importing = true; _progress = 0; _progressTotal = bvids.length; });
     final repo = ref.read(videoRepositoryProvider);
-    final result = await repo.batchAddToContainer(bvids, _containerId,
-      onProgress: (d, t) { if (mounted) setState(() => _progress = d); },
+    final result = await repo.batchAddToContainer(
+      bvids, _containerId,
+      onProgress: (d, _) { if (mounted) setState(() => _progress = d); },
     );
     if (!mounted) return;
     setState(() {
       _importing = false;
       _existing.addAll((result['alreadyInDb'] as List).cast<String>());
+      _existing.addAll((result['success'] as List).cast<String>());
     });
     final s = (result['success'] as List).length;
     final f = (result['failed'] as List).length;
-    _existing.addAll((result['success'] as List).cast<String>());
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('✓ 成功 $s 个, 失败 $f 个'), duration: const Duration(seconds: 3)),
+      SnackBar(content: Text('✓ 成功 $s 个, 失败 $f 个'),
+          duration: const Duration(seconds: 3)),
     );
     ref.read(containerListProvider.notifier).load();
     ref.read(videoListProvider.notifier).load();
     ref.read(videosInContainerProvider(_containerId).notifier).load();
+    ref.read(allFavoriteVideosProvider.notifier).load();
   }
+
+  // ── UI ────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('从稍后观看导入'),
+        title: Text(widget.config.appBarTitle),
         actions: [
           if (!_loading)
             TextButton.icon(
@@ -182,63 +192,29 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _importing
-              ? _buildImporting()
+              ? _ImportProgressWidget(progress: _progress, total: _progressTotal)
               : _error != null
-                  ? _buildError()
+                  ? _ImportErrorWidget(error: _error!, onRetry: _initLoad)
                   : _buildList(),
-    );
-  }
-
-  Widget _buildImporting() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 24),
-          Text('正在导入 $_progress / $_progressTotal',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          SizedBox(width: 240,
-            child: LinearProgressIndicator(
-                value: _progressTotal == 0 ? 0 : _progress / _progressTotal, minHeight: 6)),
-          const SizedBox(height: 16),
-          const Text('不会下载字幕, 进视频详情手动下',
-              style: TextStyle(color: Colors.grey, fontSize: 12)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text('加载失败: $_error', textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: _initLoad, child: const Text('重试')),
-        ]),
-      ),
     );
   }
 
   Widget _buildList() {
     final filtered = _filtered;
     final alreadyCount = _videos.where((v) => _existing.contains(v['bvid'])).length;
+    final cs = Theme.of(context).colorScheme;
 
     return Column(
       children: [
+        // 统计 + 操作栏
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: cs.surfaceContainerHighest,
           child: Row(children: [
             Text('总计 ${_videos.length}', style: const TextStyle(fontSize: 12)),
             const SizedBox(width: 12),
             Text('已导入 $alreadyCount',
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
+                style: TextStyle(fontSize: 12, color: cs.primary)),
             const SizedBox(width: 12),
             Text('未导入 ${_videos.length - alreadyCount}',
                 style: const TextStyle(fontSize: 12, color: Colors.orange)),
@@ -246,14 +222,16 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
             if (filtered.isNotEmpty)
               TextButton(
                 onPressed: () {
-                  final notInFiltered = filtered.where((v) => !_existing.contains(v['bvid'])).toList();
+                  final notInFiltered = filtered
+                      .where((v) => !_existing.contains(v['bvid'])).toList();
                   final all = notInFiltered.map((v) => v['bvid']!).toSet();
-                  if (_selected.containsAll(all)) {
-                    _selected.removeAll(all);
-                  } else {
-                    _selected.addAll(all);
-                  }
-                  setState(() {});
+                  setState(() {
+                    if (_selected.containsAll(all)) {
+                      _selected.removeAll(all);
+                    } else {
+                      _selected.addAll(all);
+                    }
+                  });
                 },
                 child: const Text('全选未导入', style: TextStyle(fontSize: 12)),
               ),
@@ -270,13 +248,15 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
               ),
           ]),
         ),
+        // 搜索
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: TextField(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '搜索 BV号/标题...',
-              prefixIcon: Icon(Icons.search), isDense: true,
-              border: OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: const OutlineInputBorder(),
             ),
             onChanged: (v) => setState(() => _search = v),
           ),
@@ -295,17 +275,16 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
                       ));
                     }
                     final m = filtered[index];
-                    return _VideoCard(
+                    return _ImportVideoCard(
                       bvid: m['bvid']!,
                       title: m['title']!,
                       cover: m['cover']!,
                       uploader: m['uploader']!,
-                      duration: m['duration']!,
+                      duration: int.tryParse(m['duration'] ?? '0') ?? 0,
                       isInDb: _existing.contains(m['bvid']),
                       isSelected: _selected.contains(m['bvid']),
                       onToggle: (v) => setState(() {
-                        if (v) { _selected.add(m['bvid']!); }
-                        else { _selected.remove(m['bvid']!); }
+                        v ? _selected.add(m['bvid']!) : _selected.remove(m['bvid']!);
                       }),
                     );
                   },
@@ -316,12 +295,15 @@ class _ImportWatchLaterScreenState extends ConsumerState<ImportWatchLaterScreen>
   }
 }
 
-class _VideoCard extends StatelessWidget {
-  final String bvid, title, cover, uploader, duration;
+// ─── Shared reusable widgets ─────────────────────────────
+
+class _ImportVideoCard extends StatelessWidget {
+  final String bvid, title, cover, uploader;
+  final int duration;
   final bool isInDb, isSelected;
   final ValueChanged<bool> onToggle;
 
-  const _VideoCard({
+  const _ImportVideoCard({
     required this.bvid, required this.title, required this.cover,
     required this.uploader, required this.duration,
     required this.isInDb, required this.isSelected, required this.onToggle,
@@ -329,6 +311,7 @@ class _VideoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return CheckboxListTile(
       value: isSelected,
       onChanged: isInDb ? null : (v) => onToggle(v ?? false),
@@ -337,24 +320,23 @@ class _VideoCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: Image.network(cover, width: 60, height: 45, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox(width: 60, height: 45,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                  width: 60, height: 45,
                   child: Icon(Icons.video_library_outlined, size: 24))),
           ),
         const SizedBox(width: 12),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
                   color: isInDb ? Colors.grey : null)),
             const SizedBox(height: 4),
-            Text('$uploader · ${_fmt(int.tryParse(duration) ?? 0)}',
-                style: TextStyle(fontSize: 11,
-                    color: Theme.of(context).colorScheme.outline)),
+            Text('$uploader · ${_fmt(duration)}',
+                style: TextStyle(fontSize: 11, color: cs.outline)),
             if (isInDb)
               const Text('已在视频库', style: TextStyle(fontSize: 10, color: Colors.green)),
-          ],
-        )),
+          ]),
+        ),
       ]),
       controlAffinity: ListTileControlAffinity.leading,
       dense: true,
@@ -362,9 +344,58 @@ class _VideoCard extends StatelessWidget {
   }
 
   String _fmt(int s) {
-    final m = s ~/ 60; final ss = s % 60;
+    final m = s ~/ 60, ss = s % 60;
     return m >= 60
         ? '${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}'
         : '$m:${ss.toString().padLeft(2, '0')}';
+  }
+}
+
+class _ImportProgressWidget extends StatelessWidget {
+  final int progress, total;
+  const _ImportProgressWidget({required this.progress, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          Text('正在导入 $progress / $total',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          SizedBox(width: 240,
+            child: LinearProgressIndicator(
+                value: total == 0 ? 0 : progress / total, minHeight: 6)),
+          const SizedBox(height: 16),
+          const Text('不会下载字幕, 进视频详情手动下',
+              style: TextStyle(color: Colors.grey, fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ImportErrorWidget extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+  const _ImportErrorWidget({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text('加载失败: $error', textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: onRetry, child: const Text('重试')),
+        ]),
+      ),
+    );
   }
 }

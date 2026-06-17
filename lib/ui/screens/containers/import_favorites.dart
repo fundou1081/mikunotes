@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/ui/screens/containers/home_shell.dart';
-import 'package:mikunotes/ui/screens/containers/import_fav_folder.dart';
+import 'package:mikunotes/ui/screens/containers/batch_import.dart';
 
 /// 从 B 站收藏夹批量导入 — 选文件夹
 class ImportFavoritesScreen extends ConsumerStatefulWidget {
@@ -118,15 +118,30 @@ class _ImportFavoritesScreenState extends ConsumerState<ImportFavoritesScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   final fid = (f['id'] as num).toInt();
+                  final r = ref; // capture for closure
                   await Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => ImportFavFolderScreen(
-                      fid: fid,
-                      title: f['title'] as String? ?? '未命名',
-                      total: total,
-                    ),
+                    builder: (_) => BatchImportScreen(config: BatchImportConfig(
+                      appBarTitle: '${f['title']} ($total)',
+                      hintText: '收藏夹',
+                      resolveContainerId: () async {
+                        final db = r.read(databaseProvider);
+                        final c = await db.getContainerByExternalId(fid.toString());
+                        if (c == null) throw Exception('容器创建失败');
+                        return c.id;
+                      },
+                      loadPage: (page, ps) async {
+                        final bili = r.read(bilibiliClientProvider);
+                        final result = await bili.getFavVideosWithInfo(fid, pn: page, ps: ps);
+                        final medias = (result['medias'] as List)
+                            .map((m) => Map<String, String>.from(m as Map));
+                        return medias.toList();
+                      },
+                      totalCount: total,
+                      onSync: () => r.read(containerListProvider.notifier).syncFavFolders(),
+                    )),
                   ));
                   _load();
-                  ref.read(containerListProvider.notifier).load();
+                  r.read(containerListProvider.notifier).load();
                 },
               );
             },

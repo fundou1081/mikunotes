@@ -7,7 +7,7 @@ import 'package:mikunotes/ui/screens/containers/containers_home.dart';
 import 'package:mikunotes/ui/screens/containers/favorites_tab.dart';
 import 'package:mikunotes/ui/screens/containers/import_dialog.dart';
 import 'package:mikunotes/ui/screens/containers/import_favorites.dart';
-import 'package:mikunotes/ui/screens/containers/import_watch_later.dart';
+import 'package:mikunotes/ui/screens/containers/batch_import.dart';
 import 'package:mikunotes/ui/screens/containers/settings_screen.dart';
 import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
 
@@ -180,8 +180,30 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   void _openImportWatchLater(BuildContext context) {
+    final r = ref;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ImportWatchLaterScreen()),
+      MaterialPageRoute(
+        builder: (_) => BatchImportScreen(config: BatchImportConfig(
+          appBarTitle: '从稍后观看导入',
+          hintText: '稍后观看',
+          resolveContainerId: () async {
+            final db = r.read(databaseProvider);
+            final c = await (db.select(db.containers)
+                  ..where((c) => c.type.equals('watch_later')))
+                .getSingleOrNull();
+            if (c == null) throw Exception('稍后观看容器创建失败');
+            return c.id;
+          },
+          loadPage: (page, ps) async {
+            final bili = r.read(bilibiliClientProvider);
+            final result = await bili.getWatchLaterWithInfo(pn: page, ps: ps);
+            final videos = (result['videos'] as List)
+                .map((m) => Map<String, String>.from(m as Map));
+            return videos.toList();
+          },
+          onSync: () => r.read(containerListProvider.notifier).syncWatchLater(),
+        )),
+      ),
     );
   }
 
