@@ -83,13 +83,15 @@ class BiliUser {
 class BilibiliClient {
   final Dio _dio;
   String? _sessdata;
+  String? _buvid3;
   BiliUser? _user;
   String? _wbiImgKey;
   String? _wbiSubKey;
   DateTime? _wbiKeysFetchedAt;
 
-  BilibiliClient({String? sessdata, BiliUser? user, String? wbiImgKey, String? wbiSubKey})
+  BilibiliClient({String? sessdata, String? buvid3, BiliUser? user, String? wbiImgKey, String? wbiSubKey})
       : _sessdata = sessdata,
+        _buvid3 = buvid3,
         _user = user,
         _wbiImgKey = wbiImgKey,
         _wbiSubKey = wbiSubKey,
@@ -151,6 +153,9 @@ class BilibiliClient {
   }
 
   bool get isLoggedIn => _sessdata != null && _sessdata!.isNotEmpty;
+
+  String get sessdata => _sessdata ?? '';
+  String get buvid3 => _buvid3 ?? '';
   BiliUser? get user => _user;
 
   /// 生成二维码登录 URL 和 qrcode_key

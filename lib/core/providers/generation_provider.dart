@@ -161,6 +161,13 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         promptUsed: systemPrompt,
       );
 
+      // 提取 AI tags (异步,不阻塞)
+      _ref.read(videoRepositoryProvider).extractAndSaveAiTags(
+        bvid: bvid,
+        title: 'BV $bvid',
+        content: buffer.toString(),
+      );
+
       state = {
         ...state,
         bvid: GenerationState(

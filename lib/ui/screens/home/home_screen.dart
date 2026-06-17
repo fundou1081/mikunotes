@@ -12,6 +12,7 @@ import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
 import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 
 /// 首页 — 视频库 + 导入入口 + 设置
 class HomeScreen extends ConsumerWidget {
@@ -69,14 +70,36 @@ class HomeScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('导入B站视频'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '粘贴链接 / BV号 / b23.tv',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-          maxLines: 2,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: '粘贴链接 / BV号 / b23.tv',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (data?.text != null && data!.text!.isNotEmpty) {
+                    controller.text = data.text!;
+                    controller.selection = TextSelection.fromPosition(
+                      TextPosition(offset: data.text!.length),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.paste),
+                label: const Text('粘贴剪贴板'),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(

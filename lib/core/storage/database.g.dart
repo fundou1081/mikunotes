@@ -68,6 +68,13 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _aiTagsMeta = const VerificationMeta('aiTags');
+  @override
+  late final GeneratedColumn<String> aiTags = GeneratedColumn<String>(
+      'ai_tags', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   @override
   List<GeneratedColumn> get $columns => [
         bvid,
@@ -78,7 +85,8 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
         duration,
         pageCount,
         addedAt,
-        tags
+        tags,
+        aiTags
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -134,6 +142,10 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
       context.handle(
           _tagsMeta, tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta));
     }
+    if (data.containsKey('ai_tags')) {
+      context.handle(_aiTagsMeta,
+          aiTags.isAcceptableOrUnknown(data['ai_tags']!, _aiTagsMeta));
+    }
     return context;
   }
 
@@ -161,6 +173,8 @@ class $VideosTable extends Videos with TableInfo<$VideosTable, Video> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}added_at'])!,
       tags: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}tags'])!,
+      aiTags: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}ai_tags'])!,
     );
   }
 
@@ -180,6 +194,7 @@ class Video extends DataClass implements Insertable<Video> {
   final int pageCount;
   final DateTime addedAt;
   final String tags;
+  final String aiTags;
   const Video(
       {required this.bvid,
       required this.title,
@@ -189,7 +204,8 @@ class Video extends DataClass implements Insertable<Video> {
       required this.duration,
       required this.pageCount,
       required this.addedAt,
-      required this.tags});
+      required this.tags,
+      required this.aiTags});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -202,6 +218,7 @@ class Video extends DataClass implements Insertable<Video> {
     map['page_count'] = Variable<int>(pageCount);
     map['added_at'] = Variable<DateTime>(addedAt);
     map['tags'] = Variable<String>(tags);
+    map['ai_tags'] = Variable<String>(aiTags);
     return map;
   }
 
@@ -216,6 +233,7 @@ class Video extends DataClass implements Insertable<Video> {
       pageCount: Value(pageCount),
       addedAt: Value(addedAt),
       tags: Value(tags),
+      aiTags: Value(aiTags),
     );
   }
 
@@ -232,6 +250,7 @@ class Video extends DataClass implements Insertable<Video> {
       pageCount: serializer.fromJson<int>(json['pageCount']),
       addedAt: serializer.fromJson<DateTime>(json['addedAt']),
       tags: serializer.fromJson<String>(json['tags']),
+      aiTags: serializer.fromJson<String>(json['aiTags']),
     );
   }
   @override
@@ -247,6 +266,7 @@ class Video extends DataClass implements Insertable<Video> {
       'pageCount': serializer.toJson<int>(pageCount),
       'addedAt': serializer.toJson<DateTime>(addedAt),
       'tags': serializer.toJson<String>(tags),
+      'aiTags': serializer.toJson<String>(aiTags),
     };
   }
 
@@ -259,7 +279,8 @@ class Video extends DataClass implements Insertable<Video> {
           int? duration,
           int? pageCount,
           DateTime? addedAt,
-          String? tags}) =>
+          String? tags,
+          String? aiTags}) =>
       Video(
         bvid: bvid ?? this.bvid,
         title: title ?? this.title,
@@ -270,6 +291,7 @@ class Video extends DataClass implements Insertable<Video> {
         pageCount: pageCount ?? this.pageCount,
         addedAt: addedAt ?? this.addedAt,
         tags: tags ?? this.tags,
+        aiTags: aiTags ?? this.aiTags,
       );
   Video copyWithCompanion(VideosCompanion data) {
     return Video(
@@ -282,6 +304,7 @@ class Video extends DataClass implements Insertable<Video> {
       pageCount: data.pageCount.present ? data.pageCount.value : this.pageCount,
       addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
       tags: data.tags.present ? data.tags.value : this.tags,
+      aiTags: data.aiTags.present ? data.aiTags.value : this.aiTags,
     );
   }
 
@@ -296,14 +319,15 @@ class Video extends DataClass implements Insertable<Video> {
           ..write('duration: $duration, ')
           ..write('pageCount: $pageCount, ')
           ..write('addedAt: $addedAt, ')
-          ..write('tags: $tags')
+          ..write('tags: $tags, ')
+          ..write('aiTags: $aiTags')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      bvid, title, coverUrl, uploader, aid, duration, pageCount, addedAt, tags);
+  int get hashCode => Object.hash(bvid, title, coverUrl, uploader, aid,
+      duration, pageCount, addedAt, tags, aiTags);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -316,7 +340,8 @@ class Video extends DataClass implements Insertable<Video> {
           other.duration == this.duration &&
           other.pageCount == this.pageCount &&
           other.addedAt == this.addedAt &&
-          other.tags == this.tags);
+          other.tags == this.tags &&
+          other.aiTags == this.aiTags);
 }
 
 class VideosCompanion extends UpdateCompanion<Video> {
@@ -329,6 +354,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
   final Value<int> pageCount;
   final Value<DateTime> addedAt;
   final Value<String> tags;
+  final Value<String> aiTags;
   final Value<int> rowid;
   const VideosCompanion({
     this.bvid = const Value.absent(),
@@ -340,6 +366,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     this.pageCount = const Value.absent(),
     this.addedAt = const Value.absent(),
     this.tags = const Value.absent(),
+    this.aiTags = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VideosCompanion.insert({
@@ -352,6 +379,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     this.pageCount = const Value.absent(),
     required DateTime addedAt,
     this.tags = const Value.absent(),
+    this.aiTags = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : bvid = Value(bvid),
         title = Value(title),
@@ -367,6 +395,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
     Expression<int>? pageCount,
     Expression<DateTime>? addedAt,
     Expression<String>? tags,
+    Expression<String>? aiTags,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -379,6 +408,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       if (pageCount != null) 'page_count': pageCount,
       if (addedAt != null) 'added_at': addedAt,
       if (tags != null) 'tags': tags,
+      if (aiTags != null) 'ai_tags': aiTags,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -393,6 +423,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       Value<int>? pageCount,
       Value<DateTime>? addedAt,
       Value<String>? tags,
+      Value<String>? aiTags,
       Value<int>? rowid}) {
     return VideosCompanion(
       bvid: bvid ?? this.bvid,
@@ -404,6 +435,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
       pageCount: pageCount ?? this.pageCount,
       addedAt: addedAt ?? this.addedAt,
       tags: tags ?? this.tags,
+      aiTags: aiTags ?? this.aiTags,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -438,6 +470,9 @@ class VideosCompanion extends UpdateCompanion<Video> {
     if (tags.present) {
       map['tags'] = Variable<String>(tags.value);
     }
+    if (aiTags.present) {
+      map['ai_tags'] = Variable<String>(aiTags.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -456,6 +491,7 @@ class VideosCompanion extends UpdateCompanion<Video> {
           ..write('pageCount: $pageCount, ')
           ..write('addedAt: $addedAt, ')
           ..write('tags: $tags, ')
+          ..write('aiTags: $aiTags, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2079,6 +2115,7 @@ typedef $$VideosTableCreateCompanionBuilder = VideosCompanion Function({
   Value<int> pageCount,
   required DateTime addedAt,
   Value<String> tags,
+  Value<String> aiTags,
   Value<int> rowid,
 });
 typedef $$VideosTableUpdateCompanionBuilder = VideosCompanion Function({
@@ -2091,6 +2128,7 @@ typedef $$VideosTableUpdateCompanionBuilder = VideosCompanion Function({
   Value<int> pageCount,
   Value<DateTime> addedAt,
   Value<String> tags,
+  Value<String> aiTags,
   Value<int> rowid,
 });
 
@@ -2129,6 +2167,9 @@ class $$VideosTableFilterComposer
 
   ColumnFilters<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get aiTags => $composableBuilder(
+      column: $table.aiTags, builder: (column) => ColumnFilters(column));
 }
 
 class $$VideosTableOrderingComposer
@@ -2166,6 +2207,9 @@ class $$VideosTableOrderingComposer
 
   ColumnOrderings<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get aiTags => $composableBuilder(
+      column: $table.aiTags, builder: (column) => ColumnOrderings(column));
 }
 
 class $$VideosTableAnnotationComposer
@@ -2203,6 +2247,9 @@ class $$VideosTableAnnotationComposer
 
   GeneratedColumn<String> get tags =>
       $composableBuilder(column: $table.tags, builder: (column) => column);
+
+  GeneratedColumn<String> get aiTags =>
+      $composableBuilder(column: $table.aiTags, builder: (column) => column);
 }
 
 class $$VideosTableTableManager extends RootTableManager<
@@ -2237,6 +2284,7 @@ class $$VideosTableTableManager extends RootTableManager<
             Value<int> pageCount = const Value.absent(),
             Value<DateTime> addedAt = const Value.absent(),
             Value<String> tags = const Value.absent(),
+            Value<String> aiTags = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VideosCompanion(
@@ -2249,6 +2297,7 @@ class $$VideosTableTableManager extends RootTableManager<
             pageCount: pageCount,
             addedAt: addedAt,
             tags: tags,
+            aiTags: aiTags,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -2261,6 +2310,7 @@ class $$VideosTableTableManager extends RootTableManager<
             Value<int> pageCount = const Value.absent(),
             required DateTime addedAt,
             Value<String> tags = const Value.absent(),
+            Value<String> aiTags = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VideosCompanion.insert(
@@ -2273,6 +2323,7 @@ class $$VideosTableTableManager extends RootTableManager<
             pageCount: pageCount,
             addedAt: addedAt,
             tags: tags,
+            aiTags: aiTags,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

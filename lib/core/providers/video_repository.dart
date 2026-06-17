@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:drift/drift.dart' as drift show Value;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
@@ -6,6 +8,7 @@ import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
 import 'package:mikunotes/core/models/subtitle.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/models/video.dart' as video_model;
+import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/core/subtitle/subtitle_parser.dart';
 import 'package:uuid/uuid.dart';
@@ -16,8 +19,9 @@ const _uuid = Uuid();
 class VideoRepository {
   final BilibiliClient _bili;
   final AppDatabase _db;
+  final Ref _ref;
 
-  VideoRepository(this._bili, this._db);
+  VideoRepository(this._bili, this._db, this._ref);
 
   /// 从 URL 或 BV号 解析 BV号 (兼容分享整段文本)
   Future<String?> parseBvid(String input) async {
@@ -226,6 +230,51 @@ class VideoRepository {
   }
 
   Future<void> deleteVideo(String bvid) => _db.deleteVideo(bvid);
+
+  /// 异步提取 AI tags 并保存 (不阻塞主流程)
+  Future<void> extractAndSaveAiTags({
+    required String bvid,
+    required String title,
+    required String content,
+  }) async {
+    try {
+      final llmClient = _ref.read(llmClientProvider);
+      final prompt = '''从以下视频内容中提取 3-5 个精准标签用于分类。
+标签用中文1-4字，覆盖技术/人物/主题/行业等维度。
+不要泛词。输出 JSON 数组如: ["AI", "深度学习"]
+
+视频: $title
+内容: ${content.length > 2000 ? content.substring(0, 2000) : content}
+
+只输出 JSON 数组:''';
+      final response = await llmClient.chat(
+        systemPrompt: '你是视频内容分析专家。',
+        userMessage: prompt,
+        maxTokens: 200,
+      );
+      // 解析 JSON 数组
+      final tags = _parseAiTags(response);
+      if (tags.isNotEmpty) {
+        await _db.updateVideoTags(bvid, aiTags: tags.join(','));
+      }
+    } catch (_) {
+      // 静默失败,不阻塞主流程
+    }
+  }
+
+  List<String> _parseAiTags(String text) {
+    try {
+      String json = text.trim();
+      if (json.contains('```')) {
+        final m = RegExp(r"```(?:json)?\s*(\[.*?\])\s*```", dotAll: true).firstMatch(json);
+        if (m != null) json = m.group(1)!;
+      }
+      final list = jsonDecode(json) as List;
+      return list.map((t) => t.toString().trim()).where((t) => t.isNotEmpty).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 
   // ─── 总结 CRUD ──────────────────────────────────────────────
 

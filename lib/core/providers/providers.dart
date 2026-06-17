@@ -216,6 +216,7 @@ final videoRepositoryProvider = Provider<VideoRepository>((ref) {
   return VideoRepository(
     ref.watch(bilibiliClientProvider),
     ref.watch(databaseProvider),
+    ref,
   );
 });
 

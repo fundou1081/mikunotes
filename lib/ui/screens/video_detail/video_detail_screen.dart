@@ -12,8 +12,10 @@ import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
+import 'package:mikunotes/core/bilibili/comment_client.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:drift/drift.dart' as drift show Value;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -92,6 +94,19 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
           title: Text('视频 ${widget.bvid}', maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
             IconButton(
+              icon: const Icon(Icons.open_in_browser),
+              tooltip: '在 B 站打开',
+              onPressed: () => launchUrl(
+                Uri.parse('https://www.bilibili.com/video/${widget.bvid}'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.comment),
+              tooltip: '导出评论分析',
+              onPressed: _showCommentAnalysis,
+            ),
+            IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: '刷新字幕',
               onPressed: _loadingSubtitle ? null : _refreshSubtitles,
@@ -145,6 +160,75 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         setState(() => _loadingSubtitle = false);
       }
     }
+  }
+
+  Future<void> _showCommentAnalysis() async {
+    _showLoading('正在拉取评论...');
+    try {
+      // 从 B 站 API 拿 aid
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.bvid);
+      final aid = info['aid'] as int?;
+      final title = info['title'] as String? ?? '';
+      if (aid == null || aid == 0) {
+        if (mounted) Navigator.pop(context);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法获取视频 aid')),
+        );
+        return;
+      }
+      final client = ref.read(commentClientProvider);
+      final result = await client.fetchComments(aid);
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (result.comments.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('该视频暂无评论')),
+        );
+        return;
+      }
+      _showLoading('正在 AI 分析评论...');
+      final config = ref.read(aiConfigProvider);
+      final llmClient = ref.read(llmClientProvider);
+      final text = result.toText();
+      final input = text.length > 8000 ? '${text.substring(0, 8000)}...(已截断)' : text;
+      final prompt = '''你是社区洞察分析师。请从评论中提取：
+1.常见问题 2.补充信息 3.争议 4.整体情感 5.最有价值评论Top3
+
+视频${title}(共${result.total}条,采样${result.comments.length}条)\n\n$input''';
+      final analysis = await llmClient.chat(
+        systemPrompt: '你是社区洞察分析师。',
+        userMessage: prompt,
+        maxTokens: 2000,
+        disableReasoning: true,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text('评论分析 (${result.comments.length}/${result.total}条)'),
+          content: SizedBox(width: 500, height: 400,
+            child: SingleChildScrollView(child: SelectableText(analysis)),
+          ),
+          actions: [TextButton(onPressed: ()=>Navigator.pop(c), child: const Text('关闭'))],
+        ),
+      );
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('评论分析失败: $e')),
+      );
+    }
+  }
+
+  void _showLoading(String msg) {
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (c) => AlertDialog(title: Text(msg),
+        content: const SizedBox(height:60, child:Center(child:CircularProgressIndicator())),
+      ),
+    );
   }
 }
 
@@ -777,7 +861,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     final chatTemplate = activeChat?.content ??
         (config.chatTemplate.isNotEmpty ? config.chatTemplate : llm_tpl.defaultChatTemplate);
     final systemPrompt = llm_tpl.PromptTemplate.render(chatTemplate, {
-      'video_title': 'BV ${widget.bvid}',
+      'title': 'BV ${widget.bvid}',
       'bvid': widget.bvid,
       'subtitle': widget.subtitle!.fullText,
       'subtitle_truncated': widget.subtitle!.fullText,

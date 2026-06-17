@@ -17,6 +17,7 @@ class Videos extends Table {
   IntColumn get pageCount => integer().withDefault(const Constant(1))();
   DateTimeColumn get addedAt => dateTime()();
   TextColumn get tags => text().withDefault(const Constant(''))();
+  TextColumn get aiTags => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {bvid};
@@ -86,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,9 +97,12 @@ class AppDatabase extends _$AppDatabase {
             // v2: 新增 title 字段到 Summaries, 加 ChatSessions 表
             await m.addColumn(summaries, summaries.title);
             await m.createTable(chatSessions);
-            // ChatMessages: 加 sessionId, isCompressed
             await m.addColumn(chatMessages, chatMessages.sessionId);
             await m.addColumn(chatMessages, chatMessages.isCompressed);
+          }
+          if (from < 3) {
+            // v3: 加 aiTags 字段到 Videos
+            await m.addColumn(videos, videos.aiTags);
           }
         },
       );
@@ -113,6 +117,15 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertVideo(VideosCompanion v) =>
       into(videos).insertOnConflictUpdate(v);
+
+  /// 更新视频的 AI tags
+  Future<void> updateVideoTags(String bvid, {String? aiTags}) async {
+    if (aiTags == null) return;
+    await customStatement(
+      'UPDATE videos SET ai_tags = ? WHERE bvid = ?',
+      [aiTags, bvid],
+    );
+  }
 
   Future<void> deleteVideo(String bvid) async {
     await (delete(subtitles)..where((s) => s.bvid.equals(bvid))).go();
