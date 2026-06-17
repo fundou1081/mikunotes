@@ -198,7 +198,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             final bili = r.read(bilibiliClientProvider);
             final result = await bili.getWatchLaterWithInfo(pn: page, ps: ps);
             final videos = (result['videos'] as List)
-                .map((m) => Map<String, String>.from(m as Map));
+                .map<Map<String, String>>((m) {
+                  final mm = m as Map;
+                  return {for (final e in mm.entries) e.key.toString(): e.value.toString()};
+                });
             return videos.toList();
           },
           onSync: () => r.read(containerListProvider.notifier).syncWatchLater(),

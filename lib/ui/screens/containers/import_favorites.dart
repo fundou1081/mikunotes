@@ -133,7 +133,10 @@ class _ImportFavoritesScreenState extends ConsumerState<ImportFavoritesScreen> {
                         final bili = r.read(bilibiliClientProvider);
                         final result = await bili.getFavVideosWithInfo(fid, pn: page, ps: ps);
                         final medias = (result['medias'] as List)
-                            .map((m) => Map<String, String>.from(m as Map));
+                            .map<Map<String, String>>((m) {
+                              final mm = m as Map;
+                              return {for (final e in mm.entries) e.key.toString(): e.value.toString()};
+                            });
                         return medias.toList();
                       },
                       totalCount: total,
