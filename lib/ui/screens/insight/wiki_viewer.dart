@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/wiki/wiki_storage.dart';
 import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
+import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
+import 'package:mikunotes/ui/screens/insight/tag_list_screen.dart';
+import 'package:mikunotes/ui/screens/insight/up_master_list_screen.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 /// 📚 Wiki 浏览 — 列出所有视频的 .md, 点击查看
@@ -192,7 +195,7 @@ class WikiFileViewer extends StatelessWidget {
     final String title;
     final String content;
 
-    const WikiFileViewer({required this.title, required this.content});
+    const WikiFileViewer({super.key, required this.title, required this.content});
 
     @override
     Widget build(BuildContext context) {
@@ -200,7 +203,35 @@ class WikiFileViewer extends StatelessWidget {
             appBar: AppBar(title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
             body: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: MathMarkdownBody(data: content, selectable: true),
+                child: MathMarkdownBody(
+                    data: content,
+                    selectable: true,
+                    onWikiLinkTap: (text, href, title) {
+                        if (href == null) return;
+                        // wiki:bv:BVxxx → 视频详情
+                        if (href.startsWith('wiki:bv:')) {
+                            final bvid = href.substring('wiki:bv:'.length);
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => VideoDetailScreen(bvid: bvid),
+                            ));
+                        }
+                        // wiki:tag:xxx → Tag 列表
+                        else if (href.startsWith('wiki:tag:')) {
+                            final tag = href.substring('wiki:tag:'.length);
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => TagListScreen(tag: tag),
+                            ));
+                        }
+                        // wiki:up:xxx (URL encoded) → UP 主列表
+                        else if (href.startsWith('wiki:up:')) {
+                            final encoded = href.substring('wiki:up:'.length);
+                            final name = Uri.decodeComponent(encoded);
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => UpMasterListScreen(uploaderName: name),
+                            ));
+                        }
+                    },
+                ),
             ),
         );
     }

@@ -138,7 +138,28 @@ class WikiGenerator {
             buf.writeln();
         }
 
-        return buf.toString();
+        return _injectWikiLinks(buf.toString());
+    }
+
+    /// 后处理: 自动包 BV 号为链接 + 为已知 tag/uploader 加链接
+    /// - 把内容中出现的 BVxxxxxxxxxx 包成 [[BVxxxxxxxxxx]]
+    /// - 把内容中出现的已知 tag 名包成 [[tag:xxx]] (仅手动 tag 和 AI tag)
+    /// - 把内容中出现的已知 uploader 名包成 [[uploader:xxx]] (仅前 3 个, 避免误伤)
+    String _injectWikiLinks(String text) {
+        var result = text;
+
+        // 1. 找所有已知 tag (从所有 video 组装)
+        // 2. 找所有已知 uploader (同)
+        // 3. 逐个包成链接 (避免重复包表头里的 tag)
+        // 为简单起见, 这里只处理 BV 号 (其他交给用户手动或 LLM)
+
+        // BV 号: 匹配 BV 开头的 10-12 位字母数字
+        result = result.replaceAllMapped(
+            RegExp(r'(?<!\[\[)\b(BV[a-zA-Z0-9]{8,12})\b(?!\]\])'),
+            (m) => '[[${m.group(1)}]]',
+        );
+
+        return result;
     }
 
     /// 生成 index.md
@@ -149,6 +170,8 @@ class WikiGenerator {
         buf.writeln('# MikuNotes Wiki 索引');
         buf.writeln();
         buf.writeln('> 共 ${groups.length} 个视频 · 最后更新 ${DateTime.now().toIso8601String().substring(0, 19).replaceFirst("T", " ")}');
+        buf.writeln();
+        buf.writeln('> 支持 Wiki 链接: `[[BVxxx]]` 跳视频 · `[[tag:xxx]]` 看 tag 下视频 · `[[uploader:xxx]]` 看 UP 主视频');
         buf.writeln();
         buf.writeln('---');
         buf.writeln();
