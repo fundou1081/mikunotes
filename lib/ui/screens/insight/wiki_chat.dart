@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/llm/llm_client.dart';
-import 'package:mikunotes/core/providers/providers.dart' show llmClientProvider, aiConfigProvider;
-import 'package:mikunotes/core/models/ai_config.dart';
+import 'package:mikunotes/core/wiki/wiki_orchestrator.dart';
+import 'package:mikunotes/core/wiki/wiki_context.dart';
+import 'package:mikunotes/core/providers/providers.dart' show llmClientProvider, aiConfigProvider, databaseProvider;
 
-/// 单条消息
-class _ChatMessage {
-    final String role;     // 'user' | 'assistant'
-    final String content;
-    final DateTime time;
-    _ChatMessage({required this.role, required this.content, required this.time});
-}
-
-/// 💬 Wiki 多轮对话 — 简单 LLM chat
-/// v0.5.1 范围: 单线程, 内存中保存 (v0.6.0 可加持久化)
+/// 💬 Wiki 多轮对话 — Skill 风格渐进性披露
+/// LLM 看到 manifest, 决定要加载哪些视频, 我们加载后再问
 class WikiChat extends ConsumerStatefulWidget {
     const WikiChat({super.key});
 
@@ -22,11 +14,13 @@ class WikiChat extends ConsumerStatefulWidget {
 }
 
 class _WikiChatState extends ConsumerState<WikiChat> {
-    final List<_ChatMessage> _messages = [];
+    WikiChatOrchestrator? _orchestrator;
+    final List<ChatMsg> _messages = [];
     final TextEditingController _inputController = TextEditingController();
     final ScrollController _scrollController = ScrollController();
     bool _sending = false;
     String? _error;
+    String? _loadingStatus;  // "加载 manifest..." | "加载视频..." | null
 
     @override
     void dispose() {
@@ -35,11 +29,19 @@ class _WikiChatState extends ConsumerState<WikiChat> {
         super.dispose();
     }
 
+    WikiChatOrchestrator _getOrchestrator() {
+        _orchestrator ??= WikiChatOrchestrator(
+            client: ref.read(llmClientProvider),
+            contextLoader: ref.read(wikiContextLoaderProvider),
+            config: ref.read(aiConfigProvider),
+        );
+        return _orchestrator!;
+    }
+
     Future<void> _send() async {
         final text = _inputController.text.trim();
         if (text.isEmpty || _sending) return;
 
-        // 检查 LLM 配置
         final config = ref.read(aiConfigProvider);
         if (config.apiKey.isEmpty) {
             setState(() => _error = '请先在设置中配置 AI API Key');
@@ -47,47 +49,38 @@ class _WikiChatState extends ConsumerState<WikiChat> {
         }
 
         setState(() {
-            _messages.add(_ChatMessage(
-                role: 'user', content: text, time: DateTime.now()));
+            _messages.add(ChatMsg(role: 'user', content: text, time: DateTime.now()));
             _sending = true;
             _error = null;
             _inputController.clear();
+            _loadingStatus = '正在思考 (加载 manifest)...';
         });
         _scrollToBottom();
 
         final messenger = ScaffoldMessenger.of(context);
         try {
-            final client = ref.read(llmClientProvider);
-            // 简单非流式调用 (v0.5.1 不做流式, 之后可加)
-            final history = <Map<String, String>>[
-                for (final m in _messages)
-                    {'role': m.role, 'content': m.content}
-            ];
-            final disableReasoning = config.provider == LLMProvider.minimax;
-            // 收集所有 chunks
-            final buffer = StringBuffer();
-            await for (final chunk in client.chatStreamWithFallback(
-                systemPrompt: '你是 MikuNotes Wiki 助手, 帮助用户理解和探索他们的视频库 Wiki 内容。回答简洁。',
-                messages: const [], // 历史用 messages 传
-                disableReasoning: disableReasoning,
-            )) {
-                buffer.write(chunk);
-                // 流式更新最后一条 AI 消息
-                if (_messages.isNotEmpty && _messages.last.role == 'user') {
-                    setState(() {
-                        _messages.add(_ChatMessage(
-                            role: 'assistant', content: buffer.toString(), time: DateTime.now()));
-                    });
-                } else if (_messages.isNotEmpty && _messages.last.role == 'assistant') {
-                    setState(() {
-                        _messages[_messages.length - 1] = _ChatMessage(
-                            role: 'assistant', content: buffer.toString(), time: _messages.last.time);
-                    });
-                }
-                _scrollToBottom();
-            }
+            final orch = _getOrchestrator();
+            // 同步显示 manifest 加载状态
+            setState(() => _loadingStatus = 'LLM 选择加载哪些视频...');
+            _scrollToBottom();
+
+            final result = await orch.handleUserMessage(text);
+
+            setState(() {
+                _messages.add(ChatMsg(
+                    role: 'assistant',
+                    content: result.content,
+                    time: DateTime.now(),
+                    loadedBvids: result.loadedBvids,
+                ));
+                _loadingStatus = null;
+            });
+            _scrollToBottom();
         } catch (e) {
-            setState(() => _error = '$e');
+            setState(() {
+                _error = '$e';
+                _loadingStatus = null;
+            });
             messenger.showSnackBar(SnackBar(content: Text('✗ $e')));
         } finally {
             setState(() => _sending = false);
@@ -98,6 +91,7 @@ class _WikiChatState extends ConsumerState<WikiChat> {
         setState(() {
             _messages.clear();
             _error = null;
+            _orchestrator?.history.clear();
         });
     }
 
@@ -123,12 +117,12 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     child: Row(
                         children: [
-                            Icon(Icons.lightbulb_outline,
+                            Icon(Icons.psychology_outlined,
                                 color: Theme.of(context).colorScheme.onPrimaryContainer, size: 18),
                             const SizedBox(width: 6),
                             Expanded(
                                 child: Text(
-                                    'LLM Wiki 助手 · 内存中保存, 关闭 tab 后清空',
+                                    'Skill 渐进性披露 · LLM 看到 manifest, 按需加载',
                                     style: TextStyle(
                                         fontSize: 12,
                                         color: Theme.of(context).colorScheme.onPrimaryContainer,
@@ -155,10 +149,9 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                             itemCount: _messages.length + (_sending ? 1 : 0),
                             itemBuilder: (ctx, i) {
                                 if (i == _messages.length && _sending) {
-                                    return _buildBubble('assistant', '...', isTyping: true);
+                                    return _buildStatusBubble(_loadingStatus ?? '...');
                                 }
-                                final m = _messages[i];
-                                return _buildBubble(m.role, m.content);
+                                return _buildMessage(_messages[i]);
                             },
                         ),
                 ),
@@ -208,7 +201,7 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                                     child: TextField(
                                         controller: _inputController,
                                         decoration: const InputDecoration(
-                                            hintText: '输入问题, 与 AI 探讨 Wiki...',
+                                            hintText: '问点啥, 比如: 我有哪几个 RISC-V 视频?',
                                             border: OutlineInputBorder(),
                                             isDense: true,
                                         ),
@@ -236,15 +229,15 @@ class _WikiChatState extends ConsumerState<WikiChat> {
         );
     }
 
-    Widget _buildBubble(String role, String content, {bool isTyping = false}) {
-        final isUser = role == 'user';
+    Widget _buildMessage(ChatMsg m) {
+        final isUser = m.role == 'user';
         return Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 padding: const EdgeInsets.all(12),
                 constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    maxWidth: MediaQuery.of(context).size.width * 0.8,
                 ),
                 decoration: BoxDecoration(
                     color: isUser
@@ -252,9 +245,62 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                         : Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
                 ),
-                child: isTyping
-                    ? const Text('...', style: TextStyle(fontSize: 16))
-                    : SelectableText(content, style: const TextStyle(fontSize: 14)),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                        // 加载了哪些视频的提示
+                        if (m.loadedBvids.isNotEmpty)
+                            Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                    color: Colors.green.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                        const Icon(Icons.menu_book, size: 12, color: Colors.green),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                            '加载了 ${m.loadedBvids.length} 个视频: ${m.loadedBvids.join(", ")}',
+                                            style: const TextStyle(fontSize: 10, color: Colors.green),
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        SelectableText(
+                            m.content,
+                            style: const TextStyle(fontSize: 14),
+                        ),
+                    ],
+                ),
+            ),
+        );
+    }
+
+    Widget _buildStatusBubble(String text) {
+        return Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                        const SizedBox(
+                            width: 12, height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(text, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                    ],
+                ),
             ),
         );
     }
@@ -266,23 +312,43 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                 child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                        Icon(Icons.chat_bubble_outline,
+                        Icon(Icons.psychology,
                             size: 64, color: Theme.of(context).colorScheme.outline),
                         const SizedBox(height: 16),
                         Text('开始对话', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 8),
                         Text(
-                            'v0.5.1 范围: 简单 LLM chat\n'
-                            'v0.6.0 将加: 自动读取 wiki 文件作为 context',
+                            'Skill 渐进性披露模式:\n'
+                            '· LLM 看到所有视频的 manifest (标题/标签/UP主)\n'
+                            '· 需要细节时 LLM 主动要求加载\n'
+                            '· 加载的内容只在该轮使用, 不污染主 context',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: Theme.of(context).colorScheme.outline,
                                 fontSize: 12,
                             ),
                         ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                            spacing: 8,
+                            children: [
+                                _suggestChip('我有几个 RISC-V 视频?'),
+                                _suggestChip('最近看的视频主题是什么?'),
+                                _suggestChip('帮我对比两个视频'),
+                            ],
+                        ),
                     ],
                 ),
             ),
+        );
+    }
+
+    Widget _suggestChip(String text) {
+        return ActionChip(
+            label: Text(text, style: const TextStyle(fontSize: 12)),
+            onPressed: () {
+                _inputController.text = text;
+            },
         );
     }
 }
