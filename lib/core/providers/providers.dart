@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
+import 'package:mikunotes/core/events/video_events.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
@@ -219,6 +220,7 @@ final videoRepositoryProvider = Provider<VideoRepository>((ref) {
     ref.watch(bilibiliClientProvider),
     ref.watch(databaseProvider),
     ref,
+    ref.watch(videoEventBusProvider), // ⭐ 注入事件总线
   );
 });
 

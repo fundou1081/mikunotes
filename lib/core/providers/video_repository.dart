@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
+import 'package:mikunotes/core/events/video_events.dart';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
@@ -20,8 +21,9 @@ class VideoRepository {
   final BilibiliClient _bili;
   final AppDatabase _db;
   final Ref _ref;
+  final VideoEventBus _events; // ⭐ 事件总线, 解耦 wiki 同步
 
-  VideoRepository(this._bili, this._db, this._ref);
+  VideoRepository(this._bili, this._db, this._ref, this._events);
 
   /// 从 URL 或 BV号 解析 BV号 (兼容分享整段文本)
   Future<String?> parseBvid(String input) async {
@@ -122,6 +124,7 @@ class VideoRepository {
       pageCount: pageCount,
       addedAt: now,
     );
+    _events.emit(VideoAdded(bvid)); // ⭐ wiki 同步
     return video;
   }
 
@@ -324,6 +327,7 @@ class VideoRepository {
       final tags = _parseAiTags(response);
       if (tags.isNotEmpty) {
         await _db.updateVideoTags(bvid, aiTags: tags.join(','));
+        _events.emit(TagsUpdated(bvid)); // ⭐ wiki 同步
       }
     } catch (_) {
       // 静默失败,不阻塞主流程
@@ -424,7 +428,7 @@ class VideoRepository {
       targetTopic: drift.Value(targetTopic ?? ''),
       createdAt: summary.createdAt,
     ));
-
+    _events.emit(SummaryCreated(bvid, summaryId: 0)); // ⭐ wiki 同步
     return summary;
   }
 
@@ -496,6 +500,9 @@ class VideoRepository {
       timestamp: DateTime.now(),
     ));
     await _db.updateChatSessionLastActive(sessionId);
+    // ⭐ wiki 同步
+    final session = await _db.getChatSession(sessionId);
+    if (session != null) _events.emit(ChatMessageAdded(session.bvid, sessionId: 0));
   }
 
   // ─── 上下文压缩 ──────────────────────────────────────────────

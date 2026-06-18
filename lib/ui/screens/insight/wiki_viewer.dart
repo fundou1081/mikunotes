@@ -1,56 +1,207 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mikunotes/core/wiki/wiki_storage.dart';
+import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
-/// 📚 Wiki 浏览 — 列出所有 .md 文件, 点击查看
-/// (LLM Wiki 数据通过 Event Bus 自动写入, 这里只读)
+/// 📚 Wiki 浏览 — 列出所有视频的 .md, 点击查看
 class WikiViewer extends ConsumerStatefulWidget {
-  const WikiViewer({super.key});
+    const WikiViewer({super.key});
 
-  @override
-  ConsumerState<WikiViewer> createState() => _WikiViewerState();
+    @override
+    ConsumerState<WikiViewer> createState() => _WikiViewerState();
 }
 
 class _WikiViewerState extends ConsumerState<WikiViewer> {
-  @override
-  Widget build(BuildContext context) {
-    return _placeholder(
-      icon: Icons.description_outlined,
-      title: 'Wiki 浏览',
-      subtitle: '查看所有视频的 LLM Wiki 记录\n(自动从视频管理同步)',
-    );
-  }
+    List<WikiFileInfo> _files = [];
+    bool _loading = true;
+    String? _error;
 
-  Widget _placeholder({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 64, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.outline),
+    @override
+    void initState() {
+        super.initState();
+        _loadFiles();
+    }
+
+    Future<void> _loadFiles() async {
+        setState(() {
+            _loading = true;
+            _error = null;
+        });
+        try {
+            final storage = ref.read(wikiStorageProvider);
+            final files = await storage.listVideos();
+            setState(() {
+                _files = files;
+                _loading = false;
+            });
+        } catch (e) {
+            setState(() {
+                _error = '$e';
+                _loading = false;
+            });
+        }
+    }
+
+    @override
+    Widget build(BuildContext context) {
+        if (_loading) {
+            return const Center(child: CircularProgressIndicator());
+        }
+        if (_error != null) {
+            return Center(
+                child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                        Icon(Icons.error_outline,
+                            size: 48, color: Theme.of(context).colorScheme.error),
+                        const SizedBox(height: 12),
+                        Text('加载失败: $_error'),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                            onPressed: _loadFiles,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('重试'),
+                        ),
+                    ],
+                ),
+            );
+        }
+        if (_files.isEmpty) {
+            return Center(
+                child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                            Icon(Icons.description_outlined,
+                                size: 64,
+                                color: Theme.of(context).colorScheme.outline),
+                            const SizedBox(height: 16),
+                            Text('暂无 Wiki 记录',
+                                style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            Text(
+                                '回到视频管理, 导入视频/生成总结/对话, 都会自动生成 .md',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Theme.of(context).colorScheme.outline,
+                                ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                                '目录: <app>/Documents/MikuNotes_wiki/',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context).colorScheme.outline,
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            );
+        }
+        return Column(
+            children: [
+                // 顶部信息条
+                Container(
+                    padding: const EdgeInsets.all(12),
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    child: Row(
+                        children: [
+                            Icon(Icons.folder,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer),
+                            const SizedBox(width: 8),
+                            Expanded(
+                                child: Text(
+                                    '共 ${_files.length} 个 .md 文件',
+                                    style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                    ),
+                                ),
+                            ),
+                            IconButton(
+                                icon: const Icon(Icons.refresh),
+                                tooltip: '刷新',
+                                onPressed: _loadFiles,
+                            ),
+                        ],
+                    ),
+                ),
+                // 文件列表
+                Expanded(
+                    child: ListView.separated(
+                        itemCount: _files.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                            final f = _files[i];
+                            return ListTile(
+                                leading: const Icon(Icons.description, color: Colors.blue),
+                                title: Text(
+                                    f.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                    '${f.bvid} · ${_formatSize(f.sizeBytes)} · ${_formatTime(f.modifiedAt)}',
+                                    style: const TextStyle(fontSize: 11),
+                                ),
+                                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                                onTap: () => _openFile(f),
+                            );
+                        },
+                    ),
+                ),
+            ],
+        );
+    }
+
+    Future<void> _openFile(WikiFileInfo f) async {
+        final storage = ref.read(wikiStorageProvider);
+        final content = await storage.readFile(f.path);
+        if (!mounted) return;
+        Navigator.of(context).push(
+            MaterialPageRoute(
+                builder: (_) => _WikiFileViewer(
+                    title: '${f.bvid} · ${f.title}',
+                    content: content,
+                ),
             ),
-            const SizedBox(height: 24),
-            Text(
-              '开发中 · v0.5.0',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontSize: 12,
-              ),
+        );
+    }
+
+    String _formatSize(int bytes) {
+        if (bytes < 1024) return '${bytes}B';
+        if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+        return '${(bytes / 1024 / 1024).toStringAsFixed(1)}MB';
+    }
+
+    String _formatTime(DateTime t) {
+        final now = DateTime.now();
+        final diff = now.difference(t);
+        if (diff.inMinutes < 1) return '刚刚';
+        if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+        if (diff.inDays < 1) return '${diff.inHours}小时前';
+        if (diff.inDays < 7) return '${diff.inDays}天前';
+        return DateFormat('yyyy-MM-dd').format(t);
+    }
+}
+
+/// 单个 .md 文件查看
+class _WikiFileViewer extends StatelessWidget {
+    final String title;
+    final String content;
+
+    const _WikiFileViewer({required this.title, required this.content});
+
+    @override
+    Widget build(BuildContext context) {
+        return Scaffold(
+            appBar: AppBar(title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            body: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: MathMarkdownBody(data: content, selectable: true),
             ),
-          ],
-        ),
-      ),
-    );
-  }
+        );
+    }
 }
