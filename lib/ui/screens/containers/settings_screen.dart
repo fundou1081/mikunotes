@@ -1,5 +1,7 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
+import "package:share_plus/share_plus.dart";
 import "package:mikunotes/core/bilibili/bilibili_client.dart";
 import "package:mikunotes/core/models/ai_config.dart";
 import "package:mikunotes/core/llm/prompt_template.dart" as llm_tpl;
@@ -12,7 +14,6 @@ import "package:mikunotes/core/storage/database.dart" as db hide Container;
 import "package:mikunotes/ui/screens/login/login_screen.dart";
 import "package:mikunotes/ui/screens/video_detail/video_detail_screen.dart";
 import "package:dio/dio.dart";
-import "package:flutter/services.dart";
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -279,6 +280,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// 导出选项弹窗 (3 选项)
+  Future<void> _showExportOptions(BuildContext context, BackupService backupService) async {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('导出方式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('MikuNotes 备份目录'),
+              subtitle: const Text('导出到外部存储 MikuNotes_backups/'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _doExport(context, backupService.exportAll, 'MikuNotes 备份目录');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text('系统下载目录'),
+              subtitle: const Text('导出到 Download/MikuNotes_backups/'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _doExport(context, () async {
+                  final path = await backupService.exportToDownloads();
+                  if (path == null) throw Exception('无法访问系统下载目录');
+                  return path;
+                }, '系统下载目录');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('通过系统分享'),
+              subtitle: const Text('选择任意位置或发送到其他 app'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(const SnackBar(content: Text('导出中…')));
+                try {
+                  final path = await backupService.exportAll();
+                  await Share.shareXFiles(
+                    [XFile(path)],
+                    text: 'MikuNotes 数据备份',
+                  );
+                  messenger.showSnackBar(const SnackBar(content: Text('✓ 已发送分享')));
+                } catch (e) {
+                  messenger.showSnackBar(SnackBar(content: Text('✗ 失败: $e')));
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _doExport(BuildContext context, Future<String> Function() exporter, String label) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(content: Text('导出到 $label...')));
+    try {
+      final path = await exporter();
+      messenger.showSnackBar(SnackBar(
+        content: Text('✓ 已导出到: $path'),
+        duration: const Duration(seconds: 4),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('✗ 导出失败: $e')));
+    }
+  }
+
   Future<void> _showRestoreDialog(BuildContext context, BackupService backupService) async {
     final backups = await BackupService.listBackups();
     if (!mounted) return;
@@ -351,21 +428,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.backup),
                   title: const Text('导出所有数据'),
-                  subtitle: const Text('备份到外部存储 MikuNotes_backups/，重装后可恢复'),
-                  onTap: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    messenger.showSnackBar(const SnackBar(content: Text('导出中…')));
-                    try {
-                      final path = await backupService.exportAll();
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('✓ 已导出到: $path')),
-                      );
-                    } catch (e) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('✗ 导出失败: $e')),
-                      );
-                    }
-                  },
+                  subtitle: const Text('备份/分享，重装后可恢复'),
+                  onTap: () => _showExportOptions(context, backupService),
                 ),
                 const Divider(height: 1),
                 ListTile(

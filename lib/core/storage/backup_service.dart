@@ -26,6 +26,19 @@ class BackupService {
     return dir.path;
   }
 
+  /// 系统下载目录备份路径
+  static Future<String?> get downloadsBackupDir async {
+    try {
+      final dl = await getDownloadsDirectory();
+      if (dl != null) {
+        final dir = Directory('${dl.path}/MikuNotes_backups');
+        if (!await dir.exists()) await dir.create(recursive: true);
+        return dir.path;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// 检查是否有备份文件
   static Future<List<String>> listBackups() async {
     final dir = Directory(await backupDir);
@@ -39,9 +52,21 @@ class BackupService {
     return files;
   }
 
-  /// 导出全部数据到 JSON 文件
+  /// 导出全部数据到默认备份目录
   Future<String> exportAll() async {
-    final dir = Directory(await backupDir);
+    return exportTo(await backupDir);
+  }
+
+  /// 导出到系统下载目录
+  Future<String?> exportToDownloads() async {
+    final dir = await downloadsBackupDir;
+    if (dir == null) return null;
+    return exportTo(dir);
+  }
+
+  /// 导出到指定目录
+  Future<String> exportTo(String dirPath) async {
+    final dir = Directory(dirPath);
     if (!await dir.exists()) await dir.create(recursive: true);
 
     final timestamp = DateTime.now()
