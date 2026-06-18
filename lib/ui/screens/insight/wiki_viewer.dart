@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/wiki/wiki_storage.dart';
+import 'package:mikunotes/core/wiki/insight_storage.dart';
 import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
 import 'package:mikunotes/ui/screens/video_detail/video_detail_screen.dart';
 import 'package:mikunotes/ui/screens/insight/tag_list_screen.dart';
 import 'package:mikunotes/ui/screens/insight/up_master_list_screen.dart';
+import 'package:mikunotes/ui/screens/insight/cross_video_screen.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
-/// 📚 Wiki 浏览 — 列出所有视频的 .md, 点击查看
+/// 📚 Wiki 浏览 — 列出所有视频 + 洞察的 .md, 点击查看
 class WikiViewer extends ConsumerStatefulWidget {
     const WikiViewer({super.key});
 
@@ -17,6 +19,7 @@ class WikiViewer extends ConsumerStatefulWidget {
 
 class _WikiViewerState extends ConsumerState<WikiViewer> {
     List<WikiFileInfo> _files = [];
+    List<InsightFileInfo> _insights = [];
     bool _loading = true;
     String? _error;
 
@@ -33,9 +36,12 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
         });
         try {
             final storage = ref.read(wikiStorageProvider);
+            final insightStorage = ref.read(insightStorageProvider);
             final files = await storage.listVideos();
+            final insights = await insightStorage.list();
             setState(() {
                 _files = files;
+                _insights = insights;
                 _loading = false;
             });
         } catch (e) {
@@ -70,7 +76,7 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
                 ),
             );
         }
-        if (_files.isEmpty) {
+        if (_files.isEmpty && _insights.isEmpty) {
             return Center(
                 child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -117,7 +123,7 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
                             const SizedBox(width: 8),
                             Expanded(
                                 child: Text(
-                                    '共 ${_files.length} 个 .md 文件',
+                                    '共 ${_files.length} 个视频 · ${_insights.length} 个洞察',
                                     style: TextStyle(
                                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                                     ),
@@ -131,31 +137,125 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
                         ],
                     ),
                 ),
-                // 文件列表
-                Expanded(
-                    child: ListView.separated(
-                        itemCount: _files.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                            final f = _files[i];
-                            return ListTile(
-                                leading: const Icon(Icons.description, color: Colors.blue),
-                                title: Text(
-                                    f.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                    '${f.bvid} · ${_formatSize(f.sizeBytes)} · ${_formatTime(f.modifiedAt)}',
-                                    style: const TextStyle(fontSize: 11),
-                                ),
-                                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                                onTap: () => _openFile(f),
-                            );
+                // 🔮 跨视频洞察入口
+                Card(
+                    margin: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    child: ListTile(
+                        leading: Icon(Icons.auto_awesome,
+                            color: Theme.of(context).colorScheme.onTertiaryContainer),
+                        title: Text('跨视频洞察',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                            )),
+                        subtitle: Text('选 2+ 个视频 · LLM 生成深度分析报告',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                fontSize: 12,
+                            )),
+                        trailing: Icon(Icons.arrow_forward_ios,
+                            color: Theme.of(context).colorScheme.onTertiaryContainer),
+                        onTap: () async {
+                            await Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => const CrossVideoScreen(),
+                            ));
+                            _loadFiles(); // 返回后刷新
                         },
                     ),
                 ),
+                // 文件列表
+                Expanded(
+                    child: ListView(
+                        children: [
+                            // 跨视频洞察 (历史)
+                            if (_insights.isNotEmpty) ...[
+                                Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                    child: Row(
+                                        children: [
+                                            const Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                                '跨视频洞察 (${_insights.length})',
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.purple,
+                                                ),
+                                            ),
+                                        ],
+                                    ),
+                                ),
+                                for (final i in _insights)
+                                    ListTile(
+                                        leading: const Icon(Icons.lightbulb, color: Colors.purple),
+                                        title: Text(
+                                            i.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                        ),
+                                        subtitle: Text(
+                                            '${i.videoBvids.length} 视频 · ${_formatTime(i.createdAt)} · ${_formatSize(i.sizeBytes)}',
+                                            style: const TextStyle(fontSize: 11),
+                                        ),
+                                        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                                        onTap: () => _openInsight(i),
+                                    ),
+                                const Divider(height: 1),
+                            ],
+                            // 视频文件
+                            if (_files.isNotEmpty)
+                                Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                    child: Row(
+                                        children: [
+                                            const Icon(Icons.description, size: 16, color: Colors.blue),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                                '视频 Wiki (${_files.length})',
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue,
+                                                ),
+                                            ),
+                                        ],
+                                    ),
+                                ),
+                            for (final f in _files)
+                                ListTile(
+                                    leading: const Icon(Icons.description, color: Colors.blue),
+                                    title: Text(
+                                        f.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                        '${f.bvid} · ${_formatSize(f.sizeBytes)} · ${_formatTime(f.modifiedAt)}',
+                                        style: const TextStyle(fontSize: 11),
+                                    ),
+                                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                                    onTap: () => _openFile(f),
+                                ),
+                            const SizedBox(height: 20),
+                        ],
+                    ),
+                ),
             ],
+        );
+    }
+
+    Future<void> _openInsight(InsightFileInfo i) async {
+        final content = await ref.read(insightStorageProvider).read(i.id);
+        if (!mounted) return;
+        Navigator.of(context).push(
+            MaterialPageRoute(
+                builder: (_) => WikiFileViewer(
+                    title: '🔮 ${i.title}',
+                    content: content,
+                ),
+            ),
         );
     }
 
