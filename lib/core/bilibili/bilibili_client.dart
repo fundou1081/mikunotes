@@ -490,6 +490,9 @@ class BilibiliClient {
   /// 返回: {videos: [{bvid, title, cover, duration, aid}], total: int, hasMore: bool}
   Future<Map<String, dynamic>> getUpMasterLatestVideos(int mid,
       {int pn = 1, int ps = 20}) async {
+    if (!isLoggedIn) {
+      throw Exception('未登录 B 站，无法同步 UP 主');
+    }
     Future<Response<dynamic>> doRequest() async {
       await _ensureWbiKeys();
       if (_wbiImgKey == null || _wbiSubKey == null) {
@@ -513,14 +516,28 @@ class BilibiliClient {
       // 412 = WBI 密钥过期, 强制刷新后重试一次
       if (e.response?.statusCode == 412) {
         await _ensureWbiKeys(force: true);
-        resp = await doRequest();
+        try {
+          resp = await doRequest();
+        } on DioException catch (e2) {
+          if (e2.response?.statusCode == 412) {
+            throw Exception('WBI 签名被拒 (412), 请重新登录 B 站');
+          }
+          rethrow;
+        }
       } else {
         rethrow;
       }
     }
     final data = resp.data?['data'];
     if (data is! Map) return {'videos': [], 'total': 0, 'hasMore': false};
-    final list = (data['list'] as List?)?.cast<Map>() ?? [];
+    // B 站 API 返回: data.list 是 Map, 真正的视频列表在 data.list.vlist
+    final listMap = data['list'];
+    final rawVlist = (listMap is Map ? listMap['vlist'] : listMap);
+    final vlist = (rawVlist is List ? rawVlist : const []) as List;
+    final list = <Map>[];
+    for (final item in vlist) {
+      if (item is Map) list.add(item);
+    }
     final videos = list.map((m) {
       return {
         'bvid': m['bvid'] as String? ?? '',

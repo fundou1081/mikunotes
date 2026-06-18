@@ -26,13 +26,25 @@ class _WatchLaterTabState extends ConsumerState<WatchLaterTab> {
     final c = await (db.select(db.containers)
           ..where((c) => c.type.equals('watch_later')))
         .getSingleOrNull();
-    if (c != null && mounted) {
+    if (c != null && mounted && c.id != _containerId) {
       setState(() => _containerId = c.id);
+    } else if (c != null && mounted) {
+      // 容器没变, 仍重新加载 videos
+      ref.read(videosInContainerProvider(c.id).notifier).load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 监听容器列表变化, 同步重加载 videosInContainer
+    ref.listen<AsyncValue<List<ContainerInfo>>>(containerListProvider, (prev, next) {
+      if (_containerId != null) {
+        ref.read(videosInContainerProvider(_containerId!).notifier).load();
+      } else {
+        _loadContainer();
+      }
+    });
+
     final bili = ref.watch(bilibiliClientProvider);
     final isLoggedIn = bili.isLoggedIn;
     final containersState = ref.watch(containerListProvider);
