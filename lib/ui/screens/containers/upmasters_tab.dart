@@ -4,6 +4,7 @@ import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:mikunotes/ui/screens/containers/containers_home.dart';
+import 'package:mikunotes/ui/screens/containers/upmaster_list_page.dart';
 import 'package:mikunotes/ui/screens/containers/video_list.dart';
 
 /// 👤 UP 主 Tab - 视频列表 + 顶部 chip 过滤 (全部 / 各 UP主)
@@ -54,29 +55,27 @@ class _UpMastersTabState extends ConsumerState<UpMastersTab> {
             ],
           ),
         ),
-        // 顶部 chip 过滤
-        SizedBox(
-          height: 56,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            children: [
-              _buildChip(
+        // 顶部选择器按钮 (点击打开完整列表页)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.push<int?>(
                 context,
-                label: '全部 $totalImported',
-                avatarUrl: null,
-                value: null,
-              ),
-              ...upMasters.map((um) => Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: _buildChip(
-                      context,
-                      label: '${um.name} (${um.importedCount})',
-                      avatarUrl: um.face,
-                      value: um.id,
-                    ),
-                  )),
-            ],
+                MaterialPageRoute(
+                  builder: (_) => UpMasterListPage(selectedId: _selectedUpMasterId),
+                ),
+              );
+              if (result != null || _selectedUpMasterId != null) {
+                setState(() => _selectedUpMasterId = result);
+              }
+            },
+            icon: const Icon(Icons.filter_list, size: 18),
+            label: Text(_selectedUpMasterLabel(upMasters, totalImported)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              alignment: Alignment.centerLeft,
+            ),
           ),
         ),
         const Divider(height: 1),
@@ -92,17 +91,19 @@ class _UpMastersTabState extends ConsumerState<UpMastersTab> {
     );
   }
 
-  Widget _buildChip(BuildContext context,
-      {required String label, String? avatarUrl, required int? value}) {
-    final selected = _selectedUpMasterId == value;
-    return FilterChip(
-      avatar: avatarUrl != null && avatarUrl.isNotEmpty
-          ? CircleAvatar(backgroundImage: NetworkImage(avatarUrl), radius: 10)
-          : null,
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      selected: selected,
-      onSelected: (_) => setState(() => _selectedUpMasterId = value),
+  String _selectedUpMasterLabel(List<UpMasterInfo> upMasters, int totalImported) {
+    if (_selectedUpMasterId == null) {
+      return '全部 ($totalImported) · ${upMasters.length} 个 UP 主';
+    }
+    final um = upMasters.firstWhere(
+      (u) => u.id == _selectedUpMasterId,
+      orElse: () => UpMasterInfo(
+        id: 0, uid: 0, name: '未知', face: '',
+        lastVideoAid: null, lastSyncedAt: null,
+        containerId: 0, addedAt: DateTime.now(), importedCount: 0,
+      ),
     );
+    return '${um.name} (${um.importedCount})';
   }
 }
 

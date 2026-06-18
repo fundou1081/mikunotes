@@ -14,6 +14,7 @@ import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
+import 'package:mikunotes/ui/screens/video_detail/page_list_page.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:drift/drift.dart' as drift show Value;
 import 'package:url_launcher/url_launcher.dart';
@@ -133,17 +134,33 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         ),
         body: Column(
           children: [
-            // 分P 选择器 (只有多P才显示)
+            // 分P 选择器 (只有多P才显示) - 点击打开全分P 列表页
             if (_pageCount > 1)
-              SizedBox(
-                height: 44,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  children: [
-                    _pageChip('整体', 0),
-                    for (int p = 1; p <= _pageCount; p++) _pageChip('P$p', p),
-                  ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await Navigator.push<int>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PageListPage(
+                          bvid: widget.bvid,
+                          selectedPage: _selectedPage,
+                        ),
+                      ),
+                    );
+                    if (result != null) {
+                      setState(() => _selectedPage = result);
+                      _loadSubtitleForLang(_selectedLang ?? 'zh');
+                    }
+                  },
+                  icon: const Icon(Icons.list, size: 16),
+                  label: Text(_pageChipLabel(), style: const TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
               ),
             Expanded(
@@ -215,6 +232,11 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
+  }
+
+  String _pageChipLabel() {
+    if (_selectedPage == 0) return '整体 (所有分P) · $_pageCount 个 P';
+    return 'P$_selectedPage / $_pageCount';
   }
 
   Future<void> _showCommentAnalysis() async {

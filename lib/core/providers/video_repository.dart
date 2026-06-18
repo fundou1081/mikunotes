@@ -56,6 +56,11 @@ class VideoRepository {
     final duration = (info['duration'] as num?)?.toInt() ?? 0;
     final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
     final pageCount = pages.length == 0 ? 1 : pages.length;
+    // 保存分P 名称 (从 B 站 'part' 字段提取)
+    final pageNames = pages.map((p) {
+      final p1 = p['part'] as String? ?? '';
+      return p1;
+    }).toList();
 
     // 1. 插入/更新 video_group
     final now = DateTime.now();
@@ -68,6 +73,7 @@ class VideoRepository {
       upFace: drift.Value(upFace),
       totalDuration: drift.Value(duration),
       pageCount: drift.Value(pageCount),
+      pageNamesJson: drift.Value(jsonEncode(pageNames)),
       addedAt: now,
     ));
     // 2. 插入/更新 video (page=1)

@@ -7,7 +7,7 @@ import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/video.dart' as model;
 import 'package:mikunotes/core/storage/backup_service.dart';
 
-import 'package:mikunotes/core/storage/database.dart' hide Video, VideoGroup;
+import 'package:mikunotes/core/storage/database.dart' hide Video;
 import 'package:drift/drift.dart' show Value;
 import 'package:mikunotes/core/providers/video_repository.dart';
 
@@ -443,6 +443,66 @@ final videosInContainerProvider = StateNotifierProvider.family<
     VideosInContainerNotifier, AsyncValue<List<model.Video>>, int>(
   (ref, containerId) => VideosInContainerNotifier(ref, containerId),
 );
+
+/// 单个视频的 VideoGroup (含 pageCount / pageNamesJson)
+final videoGroupProvider = StateNotifierProvider.family<
+    VideoGroupNotifier, AsyncValue<VideoGroup?>, String>(
+  (ref, bvid) => VideoGroupNotifier(ref, bvid),
+);
+
+class VideoGroupNotifier extends StateNotifier<AsyncValue<VideoGroup?>> {
+  VideoGroupNotifier(this._ref, this._bvid) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+  final String _bvid;
+
+  Future<void> load() async {
+    try {
+      final db = _ref.read(databaseProvider);
+      state = AsyncValue.data(await db.getVideoGroup(_bvid));
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+/// 视频的字幕信息 (按页分)
+class SubtitleInfo {
+  final String language;
+  final int page;
+  final int entryCount;
+  SubtitleInfo({required this.language, required this.page, required this.entryCount});
+}
+
+final allSubtitlesProvider = StateNotifierProvider.family<
+    AllSubtitlesNotifier, AsyncValue<List<SubtitleInfo>>, String>(
+  (ref, bvid) => AllSubtitlesNotifier(ref, bvid),
+);
+
+class AllSubtitlesNotifier extends StateNotifier<AsyncValue<List<SubtitleInfo>>> {
+  AllSubtitlesNotifier(this._ref, this._bvid) : super(const AsyncValue.loading()) {
+    load();
+  }
+  final Ref _ref;
+  final String _bvid;
+
+  Future<void> load() async {
+    try {
+      final db = _ref.read(databaseProvider);
+      final rows = await db.getSubtitlesForVideo(_bvid);
+      state = AsyncValue.data(rows
+          .map((r) => SubtitleInfo(
+                language: r.language,
+                page: r.page,
+                entryCount: r.entryCount,
+              ))
+          .toList());
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
 
 class VideosInContainerNotifier
     extends StateNotifier<AsyncValue<List<model.Video>>> {
