@@ -1,35 +1,79 @@
 # MikuNotes 编译指南
 
-## 中国网络环境下的编译
+## ✅ 当前配置 (已验证可用, 75s build)
 
-**已知问题**: `dl.google.com` 和 `storage.googleapis.com` 从中国无法访问，
-Flutter 引擎 artifacts (`io.flutter:*`) 无法下载。
-
-### 方案 1: Android Studio (推荐)
-
-```bash
-# 恢复干净配置
-cd ~/flutter && git checkout -- packages/flutter_tools/gradle/settings.gradle.kts
-cd ~/my_proj/mikunotes && git checkout -- android/settings.gradle.kts android/build.gradle.kts android/gradle.properties
-
-# Android Studio → File → Open → my_proj/mikunotes/android
-# Build → Build APK
+### settings.gradle.kts
+```kotlin
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)  // ← 关键!
+    repositories {
+        maven { url = uri("file:///Users/fundou/maven_local") }
+        maven { url = uri("file:///Users/fundou/flutter_engine_maven") }
+    }
+}
+pluginManagement {
+    repositories {
+        maven { url = uri("file:///Users/fundou/maven_local") }
+        maven { url = uri("file:///Users/fundou/flutter_engine_maven") }
+    }
+}
 ```
 
-### 方案 2: VPN
-
-终端设置代理后:
-```bash
-export https_proxy=http://127.0.0.1:7890
-flutter build apk --release
+### build.gradle.kts
+```kotlin
+// NO repositories block! PREFER_SETTINGS handles it.
 ```
 
-### 方案 3: 本地 Maven 仓库 (实验性)
-```bash
-# 1. 从缓存提取本地 Maven 仓库
-python3 script/extract_gradle_cache_to_maven.py
-
-# 2. 配置纯本地仓库 (改 3 个 gradle 文件, 全指向 file:///Users/fundou/maven_local)
-
-# 3. flutter build apk --release
+### gradle.properties
+```properties
+org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=512m
+org.gradle.workers.max=2
+android.useAndroidX=true
 ```
+
+### gradle-wrapper.properties
+```properties
+distributionUrl=https\://mirrors.aliyun.com/macports/distfiles/gradle/gradle-8.14-all.zip
+```
+
+### ~/flutter/packages/flutter_tools/gradle/settings.gradle.kts
+```kotlin
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven { url = uri("file:///Users/fundou/maven_local") }
+    }
+}
+```
+
+## 🔑 原理
+
+`PREFER_SETTINGS` 模式会**阻止** any `allprojects { repositories { ... } }` 的动态添加。
+Flutter Gradle Plugin 在运行时调用 `rootProject.allprojects { repositories.maven { url = uri("https://storage.googleapis.com/...") } }` 被彻底拦截。
+
+## 🏗️ 本地 Maven 仓库
+
+- `~/maven_local/`: 1.4GB, 所有缓存 artifacts 的副本
+- `~/flutter_engine_maven/`: Flutter 引擎专用 artifacts (io.flutter:*)
+
+创建方法:
+```python
+# 从 Gradle 全局缓存复制所有 artifacts
+import os, shutil
+cache = os.path.expanduser("~/.gradle/caches/modules-2/files-2.1")
+local = os.path.expanduser("~/maven_local")
+for group in os.listdir(cache):
+    for artifact in os.listdir(f"{cache}/{group}"):
+        for version in os.listdir(f"{cache}/{group}/{artifact}"):
+            for h in os.listdir(f"{cache}/{group}/{artifact}/{version}"):
+                for f in os.listdir(f"{cache}/{group}/{artifact}/{version}/{h}"):
+                    dest = f"{local}/{group.replace('.','/')}/{artifact}/{version}"
+                    os.makedirs(dest, exist_ok=True)
+                    shutil.copy2(f"{cache}/{group}/{artifact}/{version}/{h}/{f}", f"{dest}/{f}")
+```
+
+## ⚠️ 注意事项
+
+- **绝不删除** `~/.gradle/caches/modules-2/metadata-*/` — metadata 无法手动重建
+- `local-engine-repo` gradle 属性会导致 FlutterPlugin crash
+- 在 8GB 机器上, `-Xmx3G` 是上限 (配合 `workers.max=2`)
