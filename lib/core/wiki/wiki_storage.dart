@@ -91,7 +91,7 @@ class WikiStorage {
             final title = match?.group(2) ?? name;
             files.add(WikiFileInfo(
                 bvid: bvid,
-                title: Uri.decodeComponent(title),
+                title: title,  // 不过 URL decode, slug 是中文不要转义
                 path: 'videos/$name',
                 fullPath: entity.path,
                 modifiedAt: stat.modified,

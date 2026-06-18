@@ -13,7 +13,7 @@ import 'package:mikunotes/ui/screens/containers/settings_screen.dart';
 import 'package:mikunotes/ui/screens/containers/upmaster_search.dart';
 import 'package:mikunotes/ui/screens/containers/upmasters_tab.dart';
 import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
-import 'package:mikunotes/ui/screens/insight/insights_home.dart';
+import 'package:mikunotes/ui/screens/insight/graph_visualization.dart';
 import 'package:mikunotes/ui/screens/insight/wiki_viewer.dart';
 import 'package:mikunotes/ui/screens/insight/wiki_chat.dart';
 
@@ -48,9 +48,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   ];
 
   static const _insightPages = [
-    InsightsHome(),      // 💡 洞察首页
-    WikiViewer(),        // 📚 Wiki 浏览
-    WikiChat(),          // 💬 多轮对话
+    WikiViewer(),           // 📚 浏览 Wiki
+    WikiChat(),             // 💬 对话洞察
+    GraphVisualization(),   // 📊 图可视化 (待开发)
   ];
 
   void _switchMode() {
@@ -179,11 +179,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               onDestinationSelected: (i) => setState(() => _insightIndex = i),
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.lightbulb_outline),
-                  selectedIcon: Icon(Icons.lightbulb),
-                  label: '洞察',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.description_outlined),
                   selectedIcon: Icon(Icons.description),
                   label: 'Wiki',
@@ -192,6 +187,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   icon: Icon(Icons.chat_outlined),
                   selectedIcon: Icon(Icons.chat),
                   label: '对话',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.account_tree_outlined),
+                  selectedIcon: Icon(Icons.account_tree),
+                  label: '图谱',
                 ),
               ],
             )
