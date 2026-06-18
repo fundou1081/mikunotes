@@ -28,6 +28,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
   final Ref _ref;
   final Map<String, bool> _cancelFlags = {};
   final Map<String, StreamSubscription<String>?> _cancelSubs = {};
+  final Map<String, Completer<void>> _completers = {};
 
   GenerationNotifier(this._ref) : super({});
 
@@ -35,8 +36,17 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
 
   void cancel(String bvid) {
     _cancelFlags[bvid] = true;
-    // 强制关闭订阅, 中断卡住的 stream
+    // 强制取消订阅 + 立即 complete completer (中断卡住的 await)
     _cancelSubs[bvid]?.cancel();
+    final c = _completers.remove(bvid);
+    c?.complete();
+  }
+
+  /// 同步取消流 + 完成 completer
+  void _forceCancel(String bvid, Completer<void> completer) {
+    _cancelFlags[bvid] = true;
+    _cancelSubs[bvid]?.cancel();
+    if (!completer.isCompleted) completer.complete();
   }
 
   Future<void> startSummaryGeneration({
@@ -89,10 +99,10 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       int charCount = 0;
 
       // 用 listen 替代 await for, 这样 cancel 可以中断卡住的 stream
-      late final StreamSubscription<String> sub;
       final completer = Completer<void>();
+      _completers[bvid] = completer;
       Timer? watchdog;
-      _cancelSubs[bvid] = null;
+      StreamSubscription<String>? sub;
 
       sub = client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
@@ -100,22 +110,23 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         disableReasoning: disableReasoning,
       ).listen(
         (chunk) {
-          _cancelSubs[bvid] = sub; // 注册以支持强制取消
           // 重置 watchdog: 每次收到 chunk 再等 30s
           watchdog?.cancel();
           watchdog = Timer(const Duration(seconds: 30), () {
             if (_cancelFlags[bvid] == true) {
-              sub.cancel();
-              if (!completer.isCompleted) completer.complete();
+              sub?.cancel();
+              final c = _completers.remove(bvid);
+              c?.complete();
             }
           });
 
           if (_cancelFlags[bvid] == true) {
             _cancelFlags[bvid] = false;
-            sub.cancel();
+            sub?.cancel();
             watchdog?.cancel();
+            final c = _completers.remove(bvid);
+            c?.complete();
             state = {...state, bvid: GenerationState(content: buffer.toString())};
-            if (!completer.isCompleted) completer.complete();
             return;
           }
           buffer.write(chunk);
@@ -132,18 +143,30 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         },
         onDone: () {
           _cancelSubs.remove(bvid);
+          _completers.remove(bvid);
           watchdog?.cancel();
           if (!completer.isCompleted) completer.complete();
         },
         onError: (e) {
           _cancelSubs.remove(bvid);
+          _completers.remove(bvid);
           watchdog?.cancel();
           if (!completer.isCompleted) completer.completeError(e);
         },
         cancelOnError: true,
       );
+      // 立即注册 sub 供取消
+      _cancelSubs[bvid] = sub;
 
-      await completer.future;
+      try {
+        await completer.future;
+      } catch (e) {
+        rethrow;
+      } finally {
+        _completers.remove(bvid);
+        _cancelSubs.remove(bvid);
+        watchdog?.cancel();
+      }
       if (_cancelFlags[bvid] == true) {
         await ForegroundServiceManager.stop();
         return;
@@ -163,7 +186,24 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         if (state[bvid]?.summaryId == summary.id) state = {...state}..remove(bvid);
       });
     } catch (e) {
-      state = {...state, bvid: GenerationState(isRunning: false, error: '$e', content: state[bvid]?.content ?? '')};
+      // 如果有部分内容 (卡住后取消 / 网络错误), 保存为草稿
+      final partial = state[bvid]?.content ?? '';
+      if (partial.trim().isNotEmpty) {
+        try {
+          final config = _ref.read(aiConfigProvider);
+          await _ref.read(videoRepositoryProvider).createSummary(
+            bvid: bvid, content: '⚠️ 生成中断/出错，已保存部分内容\n\n$partial',
+            type: summary_model.SummaryType.structured,
+            modelUsed: config.effectiveModel, promptUsed: 'partial', page: page,
+          );
+          state = {...state, bvid: GenerationState(
+            isRunning: false, error: '$e (部分内容已保存)',
+            content: partial)};
+          return;
+        } catch (_) {}
+      }
+      state = {...state, bvid: GenerationState(
+        isRunning: false, error: '$e', content: partial)};
     } finally {
       await ForegroundServiceManager.stop();
     }

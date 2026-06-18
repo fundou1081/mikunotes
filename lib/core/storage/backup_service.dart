@@ -96,14 +96,33 @@ class BackupService {
         .substring(0, 19);
 
     // 1. 读取所有数据
-    final videos = await _db.getAllVideos();
+    final videoRows = await _db.getAllVideos();
     final allSubtitles = <Map<String, dynamic>>[];
     final allSummaries = <Map<String, dynamic>>[];
     final allSessions = <Map<String, dynamic>>[];
     final allMessages = <Map<String, dynamic>>[];
 
+    // JOIN video_groups 拿 title/cover/uploader/pageCount/pageNames
+    final videos = <Map<String, dynamic>>[];
+    for (final v in videoRows) {
+      final g = await _db.getVideoGroup(v.bvid);
+      videos.add({
+        'bvid': v.bvid,
+        'page': v.page,
+        'aid': v.aid,
+        'duration': v.duration,
+        'addedAt': v.addedAt.toIso8601String(),
+        'title': g?.title ?? v.bvid,
+        'cover': g?.cover ?? '',
+        'uploader': g?.uploader ?? '',
+        'pageCount': g?.pageCount ?? 1,
+        'pageNamesJson': g?.pageNamesJson ?? '[]',
+      });
+    }
+
     for (final v in videos) {
-      final subs = await _db.getSubtitlesForVideo(v.bvid);
+      final bvid = v['bvid'] as String;
+      final subs = await _db.getSubtitlesForVideo(bvid);
       for (final s in subs) {
         allSubtitles.add({
           'bvid': s.bvid,
@@ -117,7 +136,7 @@ class BackupService {
         });
       }
 
-      final summaries = await _db.getSummariesForVideo(v.bvid);
+      final summaries = await _db.getSummariesForVideo(bvid);
       for (final s in summaries) {
         allSummaries.add({
           'id': s.id,
@@ -132,7 +151,7 @@ class BackupService {
         });
       }
 
-      final sessions = await _db.getChatSessionsForVideo(v.bvid);
+      final sessions = await _db.getChatSessionsForVideo(bvid);
       for (final sess in sessions) {
         allSessions.add({
           'id': sess.id,
@@ -166,11 +185,16 @@ class BackupService {
       'message_count': allMessages.length,
       'videos': videos
           .map((v) => {
-                'bvid': v.bvid,
-                'page': v.page,
-                'aid': v.aid,
-                'duration': v.duration,
-                'addedAt': v.addedAt.toIso8601String(),
+                'bvid': v['bvid'],
+                'page': v['page'],
+                'aid': v['aid'],
+                'duration': v['duration'],
+                'addedAt': v['addedAt'],
+                'title': v['title'],
+                'cover': v['cover'],
+                'uploader': v['uploader'],
+                'pageCount': v['pageCount'],
+                'pageNamesJson': v['pageNamesJson'],
               })
           .toList(),
       'subtitles': allSubtitles,
@@ -213,18 +237,25 @@ class BackupService {
         try {
           final bvid = v['bvid'] as String;
           final addedAt = DateTime.parse(v['addedAt'] as String);
-          final aid = (v['aid'] as num).toInt();
+          final aid = (v['aid'] as num?)?.toInt() ?? 0;
           final duration = (v['duration'] as num?)?.toInt() ?? 0;
           final page = (v['page'] as num?)?.toInt() ?? 1;
+          // v2 格式带 title/cover/uploader/pageCount/pageNamesJson
+          final title = (v['title'] as String?) ?? bvid;
+          final cover = (v['cover'] as String?) ?? (v['coverUrl'] as String?) ?? '';
+          final uploader = (v['uploader'] as String?) ?? '';
+          final pageCount = (v['pageCount'] as num?)?.toInt() ?? 1;
+          final pageNamesJson = (v['pageNamesJson'] as String?) ?? '[]';
 
-          // Insert video_group (backward compat: old backups have title/cover etc.)
+          // Insert video_group
           await _db.insertVideoGroup(VideoGroupsCompanion.insert(
             bvid: bvid,
-            title: (v['title'] as String?) ?? bvid,
-            cover: Value((v['coverUrl'] as String?) ?? ''),
-            uploader: Value((v['uploader'] as String?) ?? ''),
+            title: title,
+            cover: Value(cover),
+            uploader: Value(uploader),
             totalDuration: Value(duration),
-            pageCount: Value((v['pageCount'] as num?)?.toInt() ?? 1),
+            pageCount: Value(pageCount),
+            pageNamesJson: Value(pageNamesJson),
             addedAt: addedAt,
           ));
           // Insert video (page=1 for old backups)

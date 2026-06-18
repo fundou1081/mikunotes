@@ -95,6 +95,7 @@ class VideoListItem extends ConsumerStatefulWidget {
 
 class _VideoListItemState extends ConsumerState<VideoListItem> {
   bool _downloading = false;
+  bool _refreshing = false;
   bool _hasSubtitle = false;
 
   @override
@@ -131,6 +132,29 @@ class _VideoListItemState extends ConsumerState<VideoListItem> {
     }
   }
 
+  /// 从 B 站重新拉取视频信息 (标题/封面/分P/UP主) - 用于恢复后无信息场景
+  Future<void> _refreshFromBili() async {
+    setState(() => _refreshing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.video.bvid);
+      // 用 B 站最新信息重新初始化 DB (覆盖原有)
+      final repo = ref.read(videoRepositoryProvider);
+      await repo.refreshVideoMetadata(widget.video.bvid, info);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('✓ 已从 B 站刷新信息')),
+      );
+      widget.onSubtitleDownloaded(); // 触发 list 刷新
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('✗ 刷新失败: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   void _showActionMenu() {
     showModalBottomSheet(
       context: context,
@@ -150,6 +174,23 @@ class _VideoListItemState extends ConsumerState<VideoListItem> {
                   ),
                 );
               },
+            ),
+            ListTile(
+              leading: _refreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              title: const Text('从 B 站刷新信息'),
+              subtitle: const Text('重新拉取标题/封面/分P/UP主 (恢复后)'),
+              onTap: _refreshing
+                  ? null
+                  : () {
+                      Navigator.pop(ctx);
+                      _refreshFromBili();
+                    },
             ),
             ListTile(
               leading: _downloading

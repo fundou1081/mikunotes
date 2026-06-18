@@ -654,4 +654,51 @@ class VideoRepository {
     }
     return {'success': success, 'failed': failed, 'alreadyInDb': alreadyInDb};
   }
+
+  /// 从 B 站刷新视频元数据 (覆盖式) - 用于恢复后无信息场景
+  Future<void> refreshVideoMetadata(String bvid, Map<String, dynamic> info) async {
+    final aid = (info['aid'] as num?)?.toInt() ?? 0;
+    final title = info['title'] as String? ?? bvid;
+    final cover = info['pic'] as String? ?? '';
+    final uploader = (info['owner'] as Map?)?['name'] as String? ?? '';
+    final upMid = (info['owner'] as Map?)?['mid'] as int? ?? 0;
+    final upFace = (info['owner'] as Map?)?['face'] as String? ?? '';
+    final duration = (info['duration'] as num?)?.toInt() ?? 0;
+    final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
+    final pageCount = pages.isEmpty ? 1 : pages.length;
+    final pageNames = pages.map((p) => p['part'] as String? ?? '').toList();
+    final now = DateTime.now();
+
+    // UPSERT video_group (覆盖)
+    await _db.insertVideoGroup(VideoGroupsCompanion.insert(
+      bvid: bvid,
+      title: title,
+      cover: drift.Value(cover),
+      uploader: drift.Value(uploader),
+      upMid: drift.Value(upMid),
+      upFace: drift.Value(upFace),
+      totalDuration: drift.Value(duration),
+      pageCount: drift.Value(pageCount),
+      pageNamesJson: drift.Value(jsonEncode(pageNames)),
+      addedAt: now,
+    ));
+    // UPSERT video page=1
+    await _db.upsertVideo(VideosCompanion.insert(
+      bvid: bvid,
+      page: 1,
+      aid: aid,
+      cid: drift.Value(0),
+      partName: drift.Value(''),
+      partTitle: drift.Value(''),
+      partCover: drift.Value(''),
+      duration: drift.Value(duration),
+      addedAt: now,
+    ));
+    // 如果是 UP 主, 同步 UP 主记录
+    if (upMid > 0) {
+      try {
+        await _db.addOrGetUpMaster(uid: upMid, name: uploader, face: upFace);
+      } catch (_) {}
+    }
+  }
 }
