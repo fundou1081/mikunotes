@@ -68,16 +68,41 @@ class LLMClient {
   }
 
   /// 从响应中提取内容 - 兼容推理模型（content 为空时 fallback 到 reasoning_content）
+  /// 过滤 `` 块
   String _extractContent(dynamic data) {
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) return '';
     final message = choices[0]['message'] as Map?;
     if (message == null) return '';
-    final content = (message['content'] as String?) ?? '';
-    if (content.isNotEmpty) return content;
-    // 推理模型 fallback: content 为空时用 reasoning_content
-    final reasoning = (message['reasoning_content'] as String?) ?? '';
-    return reasoning;
+    var content = (message['content'] as String?) ?? '';
+    if (content.isEmpty) {
+      // 推理模型 fallback: content 为空时用 reasoning_content
+      content = (message['reasoning_content'] as String?) ?? '';
+    }
+    return _stripThinkTags(content);
+  }
+
+  /// 过滤 `` 块 (用于非流式的最终结果)
+  String _stripThinkTags(String text) {
+    if (text.isEmpty) return text;
+    // 移除 ``...`` 块
+    final result = StringBuffer();
+    int i = 0;
+    while (i < text.length) {
+      final start = text.indexOf('<think>', i);
+      if (start == -1) {
+        result.write(text.substring(i));
+        break;
+      }
+      result.write(text.substring(i, start));
+      final end = text.indexOf('</think>', start);
+      if (end == -1) {
+        // 未闭合的 ``, 丢弃后续
+        break;
+      }
+      i = end + '</think>'.length;
+    }
+    return result.toString().trim();
   }
 
   /// 流式聊天 — 返回内容块的 Stream
@@ -120,6 +145,8 @@ class LLMClient {
     String buffer = '';
     bool sseFormatDetected = false;
     int sseLineCount = 0;
+    // 用于过滤 <think>...</think> 跨 chunk 的状态机
+    final thinkFilter = _ThinkStripper();
 
     await for (final chunk in stream) {
       final str = utf8.decode(chunk as List<int>, allowMalformed: true);
@@ -154,7 +181,9 @@ class LLMClient {
             if (delta != null) {
               final content = delta['content'] as String?;
               if (content != null && content.isNotEmpty) {
-                yield content;
+                // 过滤 <think>...</think> 块
+                final filtered = thinkFilter.feed(content);
+                if (filtered.isNotEmpty) yield filtered;
               }
             }
           }
@@ -275,5 +304,107 @@ class LLMClient {
         return '❌ 失败: ${code ?? ""} ${e.message ?? ""}';
       }
     }
+  }
+}
+
+/// 流式 `` 块过滤器
+/// - 状态机: NORMAL ↔ IN_THINK
+/// - 处理跨 chunk 的部分标签 (`` 分成两半到达)
+class _ThinkStripper {
+  bool _inThink = false;
+  String _carry = '';  // 保存尾部可能是标签前缀的内容
+
+  static const String _openTag = '<think>';
+  static const String _closeTag = '</think>';
+
+  /// 喂入一段 chunk, 返回过滤后的可输出文本
+  String feed(String chunk) {
+    final text = _carry + chunk;
+    _carry = '';
+    final out = StringBuffer();
+    int i = 0;
+    final n = text.length;
+
+    while (i < n) {
+      if (!_inThink) {
+        // 找 ``
+        final tagIdx = _findComplete(text, _openTag, i);
+        if (tagIdx == -1) {
+          // 没找到完整 ``. 检查尾部是不是 `` 的部分前缀
+          final partialLen = _partialPrefixLen(text, _openTag, i);
+          if (partialLen > 0) {
+            out.write(text.substring(i, n - partialLen));
+            _carry = text.substring(n - partialLen);
+          } else {
+            out.write(text.substring(i));
+          }
+          return out.toString();
+        }
+        out.write(text.substring(i, tagIdx));
+        i = tagIdx + _openTag.length;
+        _inThink = true;
+      } else {
+        // 找 ``
+        final tagIdx = _findComplete(text, _closeTag, i);
+        if (tagIdx == -1) {
+          // 保留尾部可能是 `` 部分前缀的内容
+          final partialLen = _partialPrefixLen(text, _closeTag, i);
+          if (partialLen > 0) {
+            _carry = text.substring(n - partialLen);
+          }
+          // 其余全部丢弃 (think 内容)
+          return out.toString();
+        }
+        i = tagIdx + _closeTag.length;
+        _inThink = false;
+      }
+    }
+    return out.toString();
+  }
+
+  /// 找 `tag` 在 text 中从 from 开始的位置 (完整匹配)
+  int _findComplete(String text, String tag, int from) {
+    final start = from;
+    final end = text.length - tag.length + 1;
+    for (int i = start; i < end; i++) {
+      bool match = true;
+      for (int j = 0; j < tag.length; j++) {
+        if (text.codeUnitAt(i + j) != tag.codeUnitAt(j)) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return i;
+    }
+    return -1;
+  }
+
+  /// 检查 text 末尾是不是 `tag` 的部分前缀, 返回匹配的长度
+  int _partialPrefixLen(String text, String tag, int from) {
+    final n = text.length;
+    if (n <= from) return 0;
+    final maxCheck = tag.length - 1;
+    for (int len = maxCheck; len >= 1; len--) {
+      if (n - len < from) continue;
+      bool match = true;
+      for (int j = 0; j < len; j++) {
+        if (text.codeUnitAt(n - len + j) != tag.codeUnitAt(j)) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return len;
+    }
+    return 0;
+  }
+
+  /// 流结束时的 flush (处理最后可能没闭合的 think)
+  String flush() {
+    if (_inThink) {
+      _inThink = false;
+    }
+    final rem = _carry;
+    _carry = '';
+    return rem;
   }
 }

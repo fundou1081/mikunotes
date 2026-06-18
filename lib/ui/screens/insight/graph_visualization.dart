@@ -34,11 +34,6 @@ class _GraphVisualizationState extends ConsumerState<GraphVisualization> {
     List<GraphNode> _nodes = [];
     List<GraphEdge> _edges = [];
     String? _error;
-
-    // graphview 内部数据结构
-    final gv.Graph _graph = gv.Graph()..isTree = false;
-    final Map<String, gv.Node> _gvNodes = {};
-    final Map<String, Widget> _nodeWidgets = {};
     int _reloadKey = 0;  // 用于触发 GraphView 重新构建
 
     @override
@@ -73,29 +68,35 @@ class _GraphVisualizationState extends ConsumerState<GraphVisualization> {
         }
     }
 
-    gv.Graph _buildGraph() {
-        _graph.nodes.clear();
-        _gvNodes.clear();
+    // ✅ 每次 build 都创建全新的 Graph + Algorithm, 避免 cache 错位
+    ({gv.Graph graph, Map<String, Widget> nodeWidgets}) _buildGraphAndWidgets() {
+        final g = gv.Graph()..isTree = false;
+        final nodeWidgets = <String, Widget>{};
 
         for (final n in _nodes) {
             final widget = _buildNodeWidget(n);
             final gvNode = gv.Node.Id(n.id);
-            // 存到 key (Node.Id() 创建的 node 已有 key, 这里另外存 widget)
-            // graphview 1.5+ 用 builder 模式, 直接返回 widget
-            _gvNodes[n.id] = gvNode;
-            _graph.addNode(gvNode);
-            // 同时在 map 里存 widget
-            _nodeWidgets[n.id] = widget;
+            g.addNode(gvNode);
+            nodeWidgets[n.id] = widget;
         }
 
         for (final e in _edges) {
-            final from = _gvNodes[e.from];
-            final to = _gvNodes[e.to];
-            if (from != null && to != null) {
-                _graph.addEdge(from, to);
+            // 重建节点引用, 避免反复重用
+            final fromId = e.from;
+            final toId = e.to;
+            final from = g.nodes.firstWhere(
+                (n) => n.key?.value == fromId,
+                orElse: () => gv.Node.Id(''),
+            );
+            final to = g.nodes.firstWhere(
+                (n) => n.key?.value == toId,
+                orElse: () => gv.Node.Id(''),
+            );
+            if (from.key?.value != '' && to.key?.value != '') {
+                g.addEdge(from, to);
             }
         }
-        return _graph;
+        return (graph: g, nodeWidgets: nodeWidgets);
     }
 
     Widget _buildNodeWidget(GraphNode n) {
@@ -194,6 +195,9 @@ class _GraphVisualizationState extends ConsumerState<GraphVisualization> {
             return _emptyState();
         }
 
+        // ✅ 每次 build 都重新构建, 避免节点 cache 错位
+        final graphData = _buildGraphAndWidgets();
+
         return Column(
             children: [
                 // 顶部: 统计 + 筛选
@@ -211,7 +215,7 @@ class _GraphVisualizationState extends ConsumerState<GraphVisualization> {
                             maxScale: 4.0,
                             child: gv.GraphView(
                                 key: ValueKey(_reloadKey),
-                                graph: _buildGraph(),
+                                graph: graphData.graph,
                                 algorithm: gv.FruchtermanReingoldAlgorithm(
                                     gv.FruchtermanReingoldConfiguration(
                                         iterations: 200,
@@ -226,8 +230,8 @@ class _GraphVisualizationState extends ConsumerState<GraphVisualization> {
                                 builder: (node) {
                                     // 从 key 找到 widget
                                     final key = node.key?.value;
-                                    if (key is String && _nodeWidgets.containsKey(key)) {
-                                        return _nodeWidgets[key]!;
+                                    if (key is String && graphData.nodeWidgets.containsKey(key)) {
+                                        return graphData.nodeWidgets[key]!;
                                     }
                                     return Container(width: 20, height: 20, color: Colors.red);
                                 },
