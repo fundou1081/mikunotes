@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/background/foreground_service_manager.dart';
@@ -29,6 +30,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
   final Map<String, bool> _cancelFlags = {};
   final Map<String, StreamSubscription<String>?> _cancelSubs = {};
   final Map<String, Completer<void>> _completers = {};
+  final Map<String, CancelToken> _cancelTokens = {}; // 取消 dio HTTP 请求
 
   GenerationNotifier(this._ref) : super({});
 
@@ -36,10 +38,21 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
 
   void cancel(String bvid) {
     _cancelFlags[bvid] = true;
-    // 强制取消订阅 + 立即 complete completer (中断卡住的 await)
+    // 取消 dio HTTP 请求 (关键: 才能真正中断 HTTP socket)
+    _cancelTokens.remove(bvid)?.cancel('user_cancelled');
+    // 取消订阅 + 立即 complete completer
     _cancelSubs[bvid]?.cancel();
     final c = _completers.remove(bvid);
     c?.complete();
+    // ⭐ 立即更新 UI 状态: isRunning=false (保留 buffer 中的部分内容)
+    final prev = state[bvid];
+    if (prev != null && prev.isRunning) {
+      state = {...state, bvid: GenerationState(
+        isRunning: false,
+        content: prev.content,
+        error: '已停止',
+      )};
+    }
   }
 
   /// 同步取消流 + 完成 completer
@@ -101,6 +114,8 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       // 用 listen 替代 await for, 这样 cancel 可以中断卡住的 stream
       final completer = Completer<void>();
       _completers[bvid] = completer;
+      final cancelToken = CancelToken();
+      _cancelTokens[bvid] = cancelToken;
       Timer? watchdog;
       StreamSubscription<String>? sub;
 
@@ -108,6 +123,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         systemPrompt: systemPrompt,
         messages: const [{'role': 'user', 'content': '请开始总结'}],
         disableReasoning: disableReasoning,
+        cancelToken: cancelToken,
       ).listen(
         (chunk) {
           // 重置 watchdog: 每次收到 chunk 再等 30s
@@ -165,6 +181,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       } finally {
         _completers.remove(bvid);
         _cancelSubs.remove(bvid);
+        _cancelTokens.remove(bvid);
         watchdog?.cancel();
       }
       if (_cancelFlags[bvid] == true) {

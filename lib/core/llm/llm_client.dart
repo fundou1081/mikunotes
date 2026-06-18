@@ -45,19 +45,24 @@ class LLMClient {
     required String systemPrompt,
     required List<Map<String, String>> messages,
     bool disableReasoning = false,
+    CancelToken? cancelToken,
   }) async {
     final allMessages = [
       {'role': 'system', 'content': systemPrompt},
       ...messages,
     ];
 
-    final response = await _dio.post('/chat/completions', data: {
-      'model': _config.effectiveModel,
-      'messages': allMessages,
-      'temperature': _config.temperature,
-      'max_tokens': _config.maxTokens,
-      if (disableReasoning) 'chat_template_kwargs': {'thinking': false},
-    });
+    final response = await _dio.post(
+      '/chat/completions',
+      data: {
+        'model': _config.effectiveModel,
+        'messages': allMessages,
+        'temperature': _config.temperature,
+        'max_tokens': _config.maxTokens,
+        if (disableReasoning) 'chat_template_kwargs': {'thinking': false},
+      },
+      cancelToken: cancelToken,
+    );
 
     return _extractContent(response.data);
   }
@@ -83,6 +88,7 @@ class LLMClient {
     required String systemPrompt,
     required List<Map<String, String>> messages,
     bool disableReasoning = false,
+    CancelToken? cancelToken,
   }) async* {
     final allMessages = [
       {'role': 'system', 'content': systemPrompt},
@@ -107,6 +113,7 @@ class LLMClient {
         receiveTimeout: const Duration(minutes: 5),
         headers: headers,
       ),
+      cancelToken: cancelToken,
     );
 
     final stream = response.data.stream as Stream<dynamic>;
@@ -183,6 +190,7 @@ class LLMClient {
     required String systemPrompt,
     required List<Map<String, String>> messages,
     bool disableReasoning = false,
+    CancelToken? cancelToken,
   }) async* {
     final allChunks = <String>[];
     var hasError = false;
@@ -191,6 +199,7 @@ class LLMClient {
         systemPrompt: systemPrompt,
         messages: messages,
         disableReasoning: disableReasoning,
+        cancelToken: cancelToken,
       )) {
         allChunks.add(chunk);
         yield chunk;
@@ -201,10 +210,12 @@ class LLMClient {
 
     // 如果流式没产出任何 chunk 或出错, fallback 到普通 chat
     if (hasError || allChunks.isEmpty) {
+      if (cancelToken?.isCancelled == true) return; // 取消后不 fallback
       final full = await chatMultiTurn(
         systemPrompt: systemPrompt,
         messages: messages,
         disableReasoning: disableReasoning,
+        cancelToken: cancelToken,
       );
       yield full;
     }
