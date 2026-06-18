@@ -62,7 +62,14 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       String tpl;
       if ((customPrompt ?? '').isNotEmpty) {
         tpl = customPrompt!;
+      } else if (templateId != null) {
+        // 用选中的模板
+        final selected = _ref.read(templatesProvider.notifier)
+            .getById(TemplateType.summary, templateId);
+        tpl = selected?.content ?? '';
+        if (tpl.isEmpty) tpl = llm_tpl.defaultSummaryTemplate;
       } else {
+        // 默认用活跃模板
         final tplSet = _ref.read(templatesProvider);
         tpl = tplSet.activeSummary?.content ?? config.summaryTemplate;
         if (tpl.isEmpty) tpl = llm_tpl.defaultSummaryTemplate;
