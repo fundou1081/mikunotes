@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -458,6 +459,35 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     );
   }
 
+  Future<void> _copySummary(String content) async {
+    await Clipboard.setData(ClipboardData(text: content));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✓ 已复制到剪贴板'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// 从已有总结内容继续生成 (用于被 max_tokens 截断后)
+  Future<void> _continueSummary(summary_model.Summary s) async {
+    if (widget.subtitle == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('需要先有字幕才能继续生成')),
+      );
+      return;
+    }
+    await ref.read(generationProvider.notifier).continueSummary(
+      bvid: widget.bvid,
+      subtitle: widget.subtitle!,
+      existingContent: s.content,
+      page: s.page,
+    );
+    // 刷新总结列表
+    widget.onChanged();
+  }
+
   void _showExistingSummaries() {
     showModalBottomSheet(
       context: context,
@@ -624,6 +654,16 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
                   onPressed: _showExistingSummaries,
                   icon: const Icon(Icons.history, size: 18),
                   label: Text('历史 (${all.length})'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _copySummary(s.content),
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: const Text('复制'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => _continueSummary(s),
+                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                  label: const Text('继续生成'),
                 ),
                 FilledButton.icon(
                   onPressed: _generateSummary,

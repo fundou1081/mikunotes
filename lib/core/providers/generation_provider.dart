@@ -227,6 +227,172 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
   }
 
   void clear(String bvid) => state = {...state}..remove(bvid);
+
+  /// 继续生成 — 从上次中断的内容继续写 (用于被 max_tokens 截断后)
+  Future<void> continueSummary({
+    required String bvid,
+    required VideoSubtitle subtitle,
+    required String existingContent,
+    String? templateId,
+    int page = 0,
+  }) async {
+    _cancelFlags[bvid] = false;
+    final pageLabel = page == 0 ? '整体' : 'P$page';
+    // 保持 buffer 中的已有内容, 在已有内容基础上继续
+    state = {...state, bvid: GenerationState(
+      isRunning: true,
+      content: existingContent,
+    )};
+
+    try {
+      await ForegroundServiceManager.start(
+        title: '正在继续生成 $pageLabel 总结...',
+        text: 'BV $bvid',
+      );
+
+      final config = _ref.read(aiConfigProvider);
+      final client = _ref.read(llmClientProvider);
+      final disableReasoning = config.provider == LLMProvider.minimax;
+      final transcript = subtitle.fullText;
+      final truncated = transcript.length > config.maxContextChars
+          ? transcript.substring(0, config.maxContextChars) : transcript;
+
+      String tpl;
+      if (templateId != null) {
+        final selected = _ref.read(templatesProvider.notifier)
+            .getById(TemplateType.summary, templateId);
+        tpl = selected?.content ?? llm_tpl.defaultSummaryTemplate;
+      } else {
+        final tplSet = _ref.read(templatesProvider);
+        tpl = tplSet.activeSummary?.content ?? config.summaryTemplate;
+        if (tpl.isEmpty) tpl = llm_tpl.defaultSummaryTemplate;
+      }
+      final systemPrompt = llm_tpl.PromptTemplate.render(tpl, {
+        'video_title': 'BV $bvid', 'bvid': bvid,
+        'subtitle': transcript, 'subtitle_truncated': truncated,
+        'language': subtitle.language, 'uploader': '', 'duration': '', 'page_count': '',
+      });
+
+      final buffer = StringBuffer(existingContent);
+      int charCount = existingContent.length;
+
+      final completer = Completer<void>();
+      _completers[bvid] = completer;
+      final cancelToken = CancelToken();
+      _cancelTokens[bvid] = cancelToken;
+      Timer? watchdog;
+      StreamSubscription<String>? sub;
+
+      // 提示 LLM 继续写
+      final continuePrompt = '''你刚才的输出被中断了。下面是已有的总结内容：
+
+$existingContent
+
+[继续]
+
+请从上一个被截断的句子中间继续接着写，**不要重复**已写过的部分，也不要添加 "好的" "下面继续" 等客套话。直接接着最后一个字写下去，直到结束。''';
+
+      sub = client.chatStreamWithFallback(
+        systemPrompt: systemPrompt,
+        messages: const [{'role': 'user', 'content': '请开始总结'}],
+        disableReasoning: disableReasoning,
+        cancelToken: cancelToken,
+      ).listen(
+        (chunk) {
+          watchdog?.cancel();
+          watchdog = Timer(const Duration(seconds: 30), () {
+            if (_cancelFlags[bvid] == true) {
+              sub?.cancel();
+              final c = _completers.remove(bvid);
+              c?.complete();
+            }
+          });
+
+          if (_cancelFlags[bvid] == true) {
+            _cancelFlags[bvid] = false;
+            sub?.cancel();
+            watchdog?.cancel();
+            final c = _completers.remove(bvid);
+            c?.complete();
+            state = {...state, bvid: GenerationState(content: buffer.toString())};
+            return;
+          }
+          buffer.write(chunk);
+          charCount += chunk.length;
+          state = {...state, bvid: GenerationState(isRunning: true, content: buffer.toString())};
+
+          if (charCount % 500 < chunk.length) {
+            ForegroundServiceManager.updateNotification(
+              title: '正在继续生成 $pageLabel 总结...',
+              text: 'BV $bvid · ${buffer.length} 字',
+            );
+          }
+        },
+        onDone: () {
+          _cancelSubs.remove(bvid);
+          _completers.remove(bvid);
+          watchdog?.cancel();
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (e) {
+          _cancelSubs.remove(bvid);
+          _completers.remove(bvid);
+          watchdog?.cancel();
+          if (!completer.isCompleted) completer.completeError(e);
+        },
+        cancelOnError: true,
+      );
+      _cancelSubs[bvid] = sub;
+
+      try {
+        await completer.future;
+      } catch (e) {
+        rethrow;
+      } finally {
+        _completers.remove(bvid);
+        _cancelSubs.remove(bvid);
+        _cancelTokens.remove(bvid);
+        watchdog?.cancel();
+      }
+      if (_cancelFlags[bvid] == true) {
+        await ForegroundServiceManager.stop();
+        return;
+      }
+
+      final repo = _ref.read(videoRepositoryProvider);
+      final summary = await repo.createSummary(
+        bvid: bvid, content: buffer.toString(),
+        type: summary_model.SummaryType.structured,
+        modelUsed: config.effectiveModel, promptUsed: systemPrompt, page: page,
+      );
+
+      state = {...state, bvid: GenerationState(
+        isCompleted: true, content: buffer.toString(), summaryId: summary.id)};
+      Future.delayed(const Duration(seconds: 2), () {
+        if (state[bvid]?.summaryId == summary.id) state = {...state}..remove(bvid);
+      });
+    } catch (e) {
+      final partial = state[bvid]?.content ?? existingContent;
+      if (partial.trim().isNotEmpty) {
+        try {
+          final config = _ref.read(aiConfigProvider);
+          await _ref.read(videoRepositoryProvider).createSummary(
+            bvid: bvid, content: '⚠️ 继续生成中断/出错\n\n$partial',
+            type: summary_model.SummaryType.structured,
+            modelUsed: config.effectiveModel, promptUsed: 'partial', page: page,
+          );
+          state = {...state, bvid: GenerationState(
+            isRunning: false, error: '$e (部分内容已保存)',
+            content: partial)};
+          return;
+        } catch (_) {}
+      }
+      state = {...state, bvid: GenerationState(
+        isRunning: false, error: '$e', content: partial)};
+    } finally {
+      await ForegroundServiceManager.stop();
+    }
+  }
 }
 
 final generationProvider = StateNotifierProvider<GenerationNotifier, Map<String, GenerationState>>(
