@@ -26,12 +26,17 @@ class BackupService {
     return dir.path;
   }
 
-  /// 系统下载目录备份路径
+  /// 系统下载目录备份路径 (公共 Download 目录, 非 app 私有)
   static Future<String?> get downloadsBackupDir async {
     try {
-      final dl = await getDownloadsDirectory();
-      if (dl != null) {
-        final dir = Directory('${dl.path}/MikuNotes_backups');
+      // getDownloadsDirectory 返回 app-private 路径 → 不用
+      // 从 getExternalStorageDirectory 反推到公共 Download
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) {
+        // ext = /storage/emulated/0/Android/data/com.app/files
+        // 反推: /storage/emulated/0/Download/MikuNotes_backups/
+        final extRoot = ext.path.split('Android')[0];
+        final dir = Directory('${extRoot}Download/MikuNotes_backups');
         if (!await dir.exists()) await dir.create(recursive: true);
         return dir.path;
       }
