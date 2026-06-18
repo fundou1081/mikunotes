@@ -450,26 +450,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.folder_open),
                   title: const Text('查看备份目录'),
-                  subtitle: const Text('查看外部存储 MikuNotes_backups/'),
+                  subtitle: const Text('备份目录 + 下载目录'),
                   onTap: () async {
                     final backups = await BackupService.listBackups();
+                    final dlBackups = await BackupService.listBackupsInDownloads();
+                    final allBackups = [...backups, ...dlBackups];
                     if (!mounted) return;
                     showDialog(
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text('备份文件'),
-                        content: backups.isEmpty
+                        content: allBackups.isEmpty
                             ? const Text('暂无备份')
                             : SizedBox(
                                 width: double.maxFinite,
                                 child: ListView.builder(
                                   shrinkWrap: true,
-                                  itemCount: backups.length,
+                                  itemCount: allBackups.length,
                                   itemBuilder: (_, i) {
-                                    final name = backups[i].split('/').last;
+                                    final path = allBackups[i];
+                                    final name = path.split('/').last;
+                                    final isDL = path.contains('/Download/');
                                     return ListTile(
                                       dense: true,
+                                      leading: Icon(isDL ? Icons.download : Icons.folder, size: 16),
                                       title: Text(name, style: const TextStyle(fontSize: 13)),
+                                      subtitle: Text(isDL ? '下载目录' : '备份目录',
+                                          style: const TextStyle(fontSize: 11)),
                                     );
                                   },
                                 ),
