@@ -1,7 +1,7 @@
 name: mikunotes
 description: MikuNotes - B站视频学习机，把视频变成你的私人知识库
 publish_to: 'none'
-version: 0.5.4+12
+version: 0.5.5+13
 
 environment:
   sdk: ^3.5.0
@@ -32,6 +32,7 @@ dependencies:
   google_fonts: ^6.2.1
   cached_network_image: ^3.4.1
   flutter_slidable: ^3.1.1
+  graphview: ^1.5.1
   
   # 工具
   crypto: ^3.0.5

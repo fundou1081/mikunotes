@@ -162,7 +162,7 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
         if (!mounted) return;
         Navigator.of(context).push(
             MaterialPageRoute(
-                builder: (_) => _WikiFileViewer(
+                builder: (_) => WikiFileViewer(
                     title: '${f.bvid} · ${f.title}',
                     content: content,
                 ),
@@ -188,11 +188,11 @@ class _WikiViewerState extends ConsumerState<WikiViewer> {
 }
 
 /// 单个 .md 文件查看
-class _WikiFileViewer extends StatelessWidget {
+class WikiFileViewer extends StatelessWidget {
     final String title;
     final String content;
 
-    const _WikiFileViewer({required this.title, required this.content});
+    const WikiFileViewer({required this.title, required this.content});
 
     @override
     Widget build(BuildContext context) {
