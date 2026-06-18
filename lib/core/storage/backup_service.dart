@@ -52,6 +52,21 @@ class BackupService {
     return files;
   }
 
+  /// 检查下载目录备份
+  static Future<List<String>> listBackupsInDownloads() async {
+    final dir = await downloadsBackupDir;
+    if (dir == null) return [];
+    final d = Directory(dir);
+    if (!await d.exists()) return [];
+    final files = await d
+        .list()
+        .where((f) => f.path.endsWith('.json'))
+        .map((f) => f.path)
+        .toList();
+    files.sort((a, b) => b.compareTo(a));
+    return files;
+  }
+
   /// 导出全部数据到默认备份目录
   Future<String> exportAll() async {
     return exportTo(await backupDir);

@@ -27,6 +27,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _apiKeyController;
   late TextEditingController _modelController;
   late TextEditingController _customPromptController;
+  bool _dirty = false;
   bool _fetchingModels = false;
 
   @override
@@ -358,10 +359,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showRestoreDialog(BuildContext context, BackupService backupService) async {
     final backups = await BackupService.listBackups();
+    final dlBackups = await BackupService.listBackupsInDownloads();
+    final allBackups = [...backups, ...dlBackups];
     if (!mounted) return;
-    if (backups.isEmpty) {
+    if (allBackups.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Downloads/MikuNotes/ 下没有备份文件')),
+        const SnackBar(content: Text('备份目录和下载目录都没有备份文件')),
       );
       return;
     }
@@ -373,17 +376,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: backups.length,
+            itemCount: allBackups.length,
             itemBuilder: (_, i) {
-              final name = backups[i].split('/').last;
+              final path = allBackups[i];
+              final name = path.split('/').last;
+              final isDL = path.contains('/Download/');
               return ListTile(
+                leading: Icon(isDL ? Icons.download : Icons.folder, size: 18),
                 title: Text(name, style: const TextStyle(fontSize: 13)),
+                subtitle: Text(isDL ? '下载目录' : '备份目录',
+                    style: const TextStyle(fontSize: 11)),
                 onTap: () async {
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('恢复中…')),
                   );
-                  final result = await backupService.restoreFrom(backups[i]);
+                  final result = await backupService.restoreFrom(path);
                   if (!context.mounted) return;
                   if (result.success) {
                     final stats = result.stats?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ?? '';

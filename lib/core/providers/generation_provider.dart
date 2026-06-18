@@ -27,12 +27,17 @@ class GenerationState {
 class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
   final Ref _ref;
   final Map<String, bool> _cancelFlags = {};
+  final Map<String, StreamSubscription<String>?> _cancelSubs = {};
 
   GenerationNotifier(this._ref) : super({});
 
   GenerationState? getState(String bvid) => state[bvid];
 
-  void cancel(String bvid) => _cancelFlags[bvid] = true;
+  void cancel(String bvid) {
+    _cancelFlags[bvid] = true;
+    // 强制关闭订阅, 中断卡住的 stream
+    _cancelSubs[bvid]?.cancel();
+  }
 
   Future<void> startSummaryGeneration({
     required String bvid,
@@ -82,28 +87,66 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
 
       final buffer = StringBuffer();
       int charCount = 0;
-      await for (final chunk in client.chatStreamWithFallback(
+
+      // 用 listen 替代 await for, 这样 cancel 可以中断卡住的 stream
+      late final StreamSubscription<String> sub;
+      final completer = Completer<void>();
+      Timer? watchdog;
+      _cancelSubs[bvid] = null;
+
+      sub = client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
         messages: const [{'role': 'user', 'content': '请开始总结'}],
         disableReasoning: disableReasoning,
-      )) {
-        if (_cancelFlags[bvid] == true) {
-          _cancelFlags[bvid] = false;
-          state = {...state, bvid: GenerationState(content: buffer.toString())};
-          await ForegroundServiceManager.stop();
-          return;
-        }
-        buffer.write(chunk);
-        charCount += chunk.length;
-        state = {...state, bvid: GenerationState(isRunning: true, content: buffer.toString())};
+      ).listen(
+        (chunk) {
+          _cancelSubs[bvid] = sub; // 注册以支持强制取消
+          // 重置 watchdog: 每次收到 chunk 再等 30s
+          watchdog?.cancel();
+          watchdog = Timer(const Duration(seconds: 30), () {
+            if (_cancelFlags[bvid] == true) {
+              sub.cancel();
+              if (!completer.isCompleted) completer.complete();
+            }
+          });
 
-        // 每 500 字更新通知
-        if (charCount % 500 < chunk.length) {
-          await ForegroundServiceManager.updateNotification(
-            title: '正在生成 $pageLabel 总结...',
-            text: 'BV $bvid · ${buffer.length} 字',
-          );
-        }
+          if (_cancelFlags[bvid] == true) {
+            _cancelFlags[bvid] = false;
+            sub.cancel();
+            watchdog?.cancel();
+            state = {...state, bvid: GenerationState(content: buffer.toString())};
+            if (!completer.isCompleted) completer.complete();
+            return;
+          }
+          buffer.write(chunk);
+          charCount += chunk.length;
+          state = {...state, bvid: GenerationState(isRunning: true, content: buffer.toString())};
+
+          // 每 500 字更新通知
+          if (charCount % 500 < chunk.length) {
+            ForegroundServiceManager.updateNotification(
+              title: '正在生成 $pageLabel 总结...',
+              text: 'BV $bvid · ${buffer.length} 字',
+            );
+          }
+        },
+        onDone: () {
+          _cancelSubs.remove(bvid);
+          watchdog?.cancel();
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (e) {
+          _cancelSubs.remove(bvid);
+          watchdog?.cancel();
+          if (!completer.isCompleted) completer.completeError(e);
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
+      if (_cancelFlags[bvid] == true) {
+        await ForegroundServiceManager.stop();
+        return;
       }
 
       final repo = _ref.read(videoRepositoryProvider);
