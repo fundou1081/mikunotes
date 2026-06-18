@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/bilibili/bilibili_client.dart';
+import 'package:mikunotes/core/providers/app_mode_provider.dart';
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/ui/screens/login/login_screen.dart';
 import 'package:mikunotes/ui/screens/containers/containers_home.dart';
@@ -12,6 +13,9 @@ import 'package:mikunotes/ui/screens/containers/settings_screen.dart';
 import 'package:mikunotes/ui/screens/containers/upmaster_search.dart';
 import 'package:mikunotes/ui/screens/containers/upmasters_tab.dart';
 import 'package:mikunotes/ui/screens/containers/watch_later_tab.dart';
+import 'package:mikunotes/ui/screens/insight/insights_home.dart';
+import 'package:mikunotes/ui/screens/insight/wiki_viewer.dart';
+import 'package:mikunotes/ui/screens/insight/wiki_chat.dart';
 
 /// 底部 4 Tab 容器: 📂 视频 / ⭐ 收藏夹 / ⏰ 稍后观看 / 👤 UP 主
 class HomeShell extends ConsumerStatefulWidget {
@@ -27,30 +31,85 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  int _index = 0;
+  int _videoIndex = 0;
+  int _insightIndex = 0;
 
-  /// 从外部调用切换 Tab
+  /// 从外部调用切换 Tab (仅视频管理模式下有效)
   void switchToTab(int i) {
     if (!mounted) return;
-    setState(() => _index = i);
+    setState(() => _videoIndex = i);
   }
 
-  static const _pages = [
+  static const _videoPages = [
     ContainersHome(),    // 📂 视频
     FavoritesTab(),      // ⭐ 收藏夹
     WatchLaterTab(),     // ⏰ 稍后观看
     UpMastersTab(),      // 👤 UP 主
   ];
 
+  static const _insightPages = [
+    InsightsHome(),      // 💡 洞察首页
+    WikiViewer(),        // 📚 Wiki 浏览
+    WikiChat(),          // 💬 多轮对话
+  ];
+
+  void _switchMode() {
+    final current = ref.read(appModeProvider);
+    ref.read(appModeProvider.notifier).state = current == AppMode.videoManagement
+        ? AppMode.insight
+        : AppMode.videoManagement;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bili = ref.watch(bilibiliClientProvider);
     final isLoggedIn = bili.isLoggedIn;
     final user = bili.user;
+    final mode = ref.watch(appModeProvider);
+    final isInsight = mode == AppMode.insight;
+    final index = isInsight ? _insightIndex : _videoIndex;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MikuNotes'),
+        // ⭐ 左上角模式切换按钮
+        leadingWidth: 56,
+        leading: _ModeToggleButton(
+          mode: mode,
+          onToggle: _switchMode,
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isInsight ? '洞察 · MikuNotes' : 'MikuNotes',
+              style: TextStyle(
+                fontSize: 18,
+                color: isInsight
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+                fontWeight: isInsight ? FontWeight.bold : null,
+              ),
+            ),
+            if (isInsight) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'WIKI',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           if (!isLoggedIn)
             TextButton.icon(
@@ -75,59 +134,93 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _index,
-        children: _pages,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: isInsight
+            ? IndexedStack(
+                key: const ValueKey('insight'),
+                index: _insightIndex,
+                children: _insightPages,
+              )
+            : IndexedStack(
+                key: const ValueKey('video'),
+                index: _videoIndex,
+                children: _videoPages,
+              ),
       ),
-      floatingActionButton: _index == 0
-          ? FloatingActionButton.extended(
-              onPressed: () => _openManualImport(context),
-              icon: const Icon(Icons.add),
-              label: const Text('导入'),
-            )
-          : _index == 1
+      floatingActionButton: isInsight
+          ? null  // 洞察模式不需要 FAB
+          : (_videoIndex == 0
               ? FloatingActionButton.extended(
-                  onPressed: () => _openImportFavorites(context),
-                  icon: const Icon(Icons.star),
-                  label: const Text('导入收藏夹'),
+                  onPressed: () => _openManualImport(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('导入'),
                 )
-              : _index == 2
+              : _videoIndex == 1
                   ? FloatingActionButton.extended(
-                      onPressed: () => _openImportWatchLater(context),
-                      icon: const Icon(Icons.watch_later),
-                      label: const Text('导入稍后观看'),
+                      onPressed: () => _openImportFavorites(context),
+                      icon: const Icon(Icons.star),
+                      label: const Text('导入收藏夹'),
                     )
-                  : FloatingActionButton.extended(
-                      onPressed: () => _openUpMasterSearch(context),
-                      icon: const Icon(Icons.search),
-                      label: const Text('搜索 UP 主'),
-                    ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: '视频',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.star_border),
-            selectedIcon: Icon(Icons.star),
-            label: '收藏夹',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.watch_later_outlined),
-            selectedIcon: Icon(Icons.watch_later),
-            label: '稍后观看',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'UP 主',
-          ),
-        ],
-      ),
+                  : _videoIndex == 2
+                      ? FloatingActionButton.extended(
+                          onPressed: () => _openImportWatchLater(context),
+                          icon: const Icon(Icons.watch_later),
+                          label: const Text('导入稍后观看'),
+                        )
+                      : FloatingActionButton.extended(
+                          onPressed: () => _openUpMasterSearch(context),
+                          icon: const Icon(Icons.search),
+                          label: const Text('搜索 UP 主'),
+                        )),
+      bottomNavigationBar: isInsight
+          ? NavigationBar(
+              selectedIndex: _insightIndex,
+              onDestinationSelected: (i) => setState(() => _insightIndex = i),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.lightbulb_outline),
+                  selectedIcon: Icon(Icons.lightbulb),
+                  label: '洞察',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.description_outlined),
+                  selectedIcon: Icon(Icons.description),
+                  label: 'Wiki',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_outlined),
+                  selectedIcon: Icon(Icons.chat),
+                  label: '对话',
+                ),
+              ],
+            )
+          : NavigationBar(
+              selectedIndex: _videoIndex,
+              onDestinationSelected: (i) => setState(() => _videoIndex = i),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.folder_outlined),
+                  selectedIcon: Icon(Icons.folder),
+                  label: '视频',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.star_border),
+                  selectedIcon: Icon(Icons.star),
+                  label: '收藏夹',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.watch_later_outlined),
+                  selectedIcon: Icon(Icons.watch_later),
+                  label: '稍后观看',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'UP 主',
+                ),
+              ],
+            ),
     );
   }
 
@@ -239,6 +332,39 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// ⭐ 左上角模式切换按钮 — 视频管理 ↔ 洞察
+class _ModeToggleButton extends StatelessWidget {
+  final AppMode mode;
+  final VoidCallback onToggle;
+  const _ModeToggleButton({required this.mode, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    final isInsight = mode == AppMode.insight;
+    final color = isInsight
+        ? Theme.of(context).colorScheme.primary
+        : null;
+    return IconButton(
+      tooltip: isInsight ? '切换到视频管理' : '切换到洞察模式',
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, anim) => RotationTransition(
+          turns: Tween(begin: 0.5, end: 1.0).animate(anim),
+          child: FadeTransition(opacity: anim, child: child),
+        ),
+        child: Icon(
+          isInsight
+              ? Icons.folder_special_outlined
+              : Icons.lightbulb_outline,
+          key: ValueKey(isInsight),
+          color: color,
+        ),
+      ),
+      onPressed: onToggle,
     );
   }
 }
