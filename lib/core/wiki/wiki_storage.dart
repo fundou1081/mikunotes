@@ -31,9 +31,14 @@ class WikiStorage {
     WikiStorage(this._db);
 
     /// Wiki 根目录
+    /// 写到 /Android/data/.../files/Documents/MikuNotes_wiki/ (可读可写, FileManager可见)
     Future<String> get wikiDir async {
-        final base = await getApplicationDocumentsDirectory();
-        final dir = Directory('$base/MikuNotes_wiki');
+        final ext = await getExternalStorageDirectory();
+        if (ext == null) {
+            throw FileSystemException('无法获取外部存储目录');
+        }
+        // ext = /Android/data/com.app/files → Documents 下的 MikuNotes_wiki
+        final dir = Directory('${ext.path}/Documents/MikuNotes_wiki');
         if (!await dir.exists()) await dir.create(recursive: true);
         final videosDir = Directory('${dir.path}/videos');
         if (!await videosDir.exists()) await videosDir.create(recursive: true);

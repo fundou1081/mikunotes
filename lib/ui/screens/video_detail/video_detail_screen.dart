@@ -470,6 +470,17 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
     );
   }
 
+  /// 提示信息: 显示当前 max_tokens, 帮用户判断是不是被截断
+  String _continueTooltip(summary_model.Summary s) {
+    final config = ref.read(aiConfigProvider);
+    final curLen = s.content.length;
+    final maxTok = config.maxTokens;
+    final approxMaxChars = (maxTok * 1.5).toInt();
+    return '当前内容: $curLen 字\n'
+        'max_tokens: $maxTok (~ $approxMaxChars 字)\n'
+        '点击从已有内容继续写';
+  }
+
   /// 从已有总结内容继续生成 (用于被 max_tokens 截断后)
   Future<void> _continueSummary(summary_model.Summary s) async {
     if (widget.subtitle == null) {
@@ -630,6 +641,41 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
   Widget _buildSummaryView(summary_model.Summary s, List<summary_model.Summary> all) {
     return Column(
       children: [
+        // 顶部菜单栏 (复制/查看原文 等)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+          child: Row(
+            children: [
+              Text(
+                '总结 #${s.id.substring(0, 8)} · ${_formatTime(s.createdAt)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+              const Spacer(),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 20),
+                tooltip: '更多操作',
+                onSelected: (v) {
+                  if (v == 'copy') {
+                    _copySummary(s.content);
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'copy',
+                    child: Row(children: [
+                      Icon(Icons.copy, size: 18),
+                      SizedBox(width: 8),
+                      Text('复制全部内容'),
+                    ]),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -647,23 +693,23 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.spaceEvenly,
               children: [
                 OutlinedButton.icon(
                   onPressed: _showExistingSummaries,
                   icon: const Icon(Icons.history, size: 18),
                   label: Text('历史 (${all.length})'),
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: () => _copySummary(s.content),
-                  icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('复制'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _continueSummary(s),
-                  icon: const Icon(Icons.play_circle_outline, size: 18),
-                  label: const Text('继续生成'),
+                Tooltip(
+                  message: _continueTooltip(s),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _continueSummary(s),
+                    icon: const Icon(Icons.play_circle_outline, size: 18),
+                    label: const Text('继续生成'),
+                  ),
                 ),
                 FilledButton.icon(
                   onPressed: _generateSummary,
@@ -676,6 +722,16 @@ class _SummaryTabState extends ConsumerState<_SummaryTab> {
         ),
       ],
     );
+  }
+
+  String _formatTime(DateTime t) {
+    final now = DateTime.now();
+    final diff = now.difference(t);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+    if (diff.inDays < 1) return '${diff.inHours}小时前';
+    if (diff.inDays < 7) return '${diff.inDays}天前';
+    return '${t.year}-${t.month.toString().padLeft(2, "0")}-${t.day.toString().padLeft(2, "0")}';
   }
 
   Widget _buildEmpty() {

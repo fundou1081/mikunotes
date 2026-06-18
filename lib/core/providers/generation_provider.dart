@@ -294,7 +294,7 @@ $existingContent
 
       sub = client.chatStreamWithFallback(
         systemPrompt: systemPrompt,
-        messages: const [{'role': 'user', 'content': '请开始总结'}],
+        messages: [{'role': 'user', 'content': continuePrompt}], // ⭐ 用 continuePrompt, 不是 '请开始总结'
         disableReasoning: disableReasoning,
         cancelToken: cancelToken,
       ).listen(
