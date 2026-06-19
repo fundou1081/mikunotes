@@ -13,6 +13,9 @@ import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart' hide Video;
 import 'package:mikunotes/core/subtitle/subtitle_parser.dart';
 import 'package:uuid/uuid.dart';
+import 'package:mikunotes/core/providers/repository/subtitle_repository.dart';
+import 'package:mikunotes/core/providers/repository/summary_repository.dart';
+import 'package:mikunotes/core/providers/repository/chat_repository.dart';
 
 const _uuid = Uuid();
 
@@ -128,155 +131,6 @@ class VideoRepository {
     return video;
   }
 
-  /// 下载一个视频的所有可用语言字幕
-  Future<List<VideoSubtitle>> downloadAllSubtitles(String bvid) async {
-    final video = await _db.getVideo(bvid);
-    if (video == null) throw Exception('视频未在数据库中');
-
-    final info = await _bili.getVideoInfo(bvid);
-    final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
-    if (pages.isEmpty) throw Exception('视频无分P信息');
-
-    final results = <VideoSubtitle>[];
-    int totalSaved = 0;
-    int failedPages = 0;
-
-    // 遍历所有分P, 分别为每个分P下载并保存
-    for (int pIdx = 0; pIdx < pages.length; pIdx++) {
-      final pageNum = pIdx + 1; // 1-indexed
-      final cid = pages[pIdx]['cid'] as int;
-      if (cid == 0) continue;
-
-      try {
-        final subtitleData = await _bili.getSubtitleInfo(aid: video.aid, cid: cid);
-        final subtitles = (subtitleData['subtitles'] as List?)?.cast<Map>() ?? [];
-        if (subtitles.isEmpty) {
-          // 该分P无字幕, 跳过
-          continue;
-        }
-
-        for (final s in subtitles) {
-          final lan = s['lan_doc'] as String? ?? s['lan'] as String? ?? 'unknown';
-          final rawUrl = s['subtitle_url'] as String? ?? '';
-          if (rawUrl.isEmpty) continue;
-          final url = rawUrl.startsWith('//') ? 'https:$rawUrl' : rawUrl;
-
-          try {
-            final rawBody = await _bili.downloadSubtitleRaw(url);
-            final entries = SubtitleParser.parseBilibiliJson(rawBody);
-            final plainText = SubtitleParser.toPlainText(entries);
-
-            await _db.upsertSubtitle(SubtitlesCompanion(
-              id: const drift.Value.absent(),
-              bvid: drift.Value(bvid),
-              page: drift.Value(pageNum),
-              language: drift.Value(lan),
-              rawJson: drift.Value(rawBody),
-              plainText: drift.Value(plainText),
-              charCount: drift.Value(plainText.length),
-              entryCount: drift.Value(entries.length),
-              downloadedAt: drift.Value(DateTime.now()),
-            ));
-
-            totalSaved++;
-            results.add(VideoSubtitle(
-              videoId: bvid,
-              language: lan,
-              entries: entries,
-            ));
-          } catch (_) {
-            // 单个语言失败不影响其他
-          }
-        }
-      } catch (_) {
-        failedPages++;
-        // 单个分P获取失败不影响其他分P
-      }
-    }
-
-    if (totalSaved == 0) {
-      if (failedPages > 0) {
-        throw Exception('该视频没有字幕 (${failedPages}个分P获取失败)');
-      }
-      throw Exception('该视频没有字幕');
-    }
-    return results;
-  }
-
-  /// 下载指定语言的字幕
-  Future<VideoSubtitle?> downloadAndStoreSubtitle(
-    String bvid, {
-    int? pageNum,
-    String? language,
-  }) async {
-    final subs = await _db.getSubtitlesForVideo(bvid);
-    if (subs.isNotEmpty) {
-      // 已有字幕，直接返回请求的语言 (或第一个)
-      final target = language != null
-          ? subs.firstWhere(
-              (s) => s.language == language,
-              orElse: () => subs.first,
-            )
-          : subs.first;
-      final entries = SubtitleParser.parseBilibiliJson(target.rawJson);
-      return VideoSubtitle(
-        videoId: bvid,
-        language: target.language,
-        entries: entries,
-      );
-    }
-
-    // 没有字幕，下载全部 (然后挑一个)
-    final downloaded = await downloadAllSubtitles(bvid);
-    if (downloaded.isEmpty) return null;
-    if (language != null) {
-      final match = downloaded.firstWhere(
-        (s) => s.language == language,
-        orElse: () => downloaded.first,
-      );
-      return match;
-    }
-    // 优先中文
-    return downloaded.firstWhere(
-      (s) => s.language.contains('中文') || s.language.toLowerCase().contains('zh'),
-      orElse: () => downloaded.first,
-    );
-  }
-
-  /// 获取一个视频的所有字幕语言
-  Future<List<Subtitle>> getAllSubtitles(String bvid) async {
-    return _db.getSubtitlesForVideo(bvid);
-  }
-
-  /// 获取一个视频的指定语言字幕
-  Future<VideoSubtitle?> getSubtitle(String bvid, {String? language, int? page}) async {
-    final subs = await _db.getSubtitlesForVideo(bvid);
-    if (subs.isEmpty) return null;
-
-    // 过滤 by page
-    final pageFiltered = page != null
-        ? subs.where((s) => s.page == page).toList()
-        : subs;
-    if (pageFiltered.isEmpty) return null;
-
-    final matched = language != null
-        ? pageFiltered.firstWhere(
-            (s) => s.language == language,
-            orElse: () => pageFiltered.first,
-          )
-        : pageFiltered.firstWhere(
-            (s) => s.language.contains('中文') || s.language.toLowerCase().contains('zh'),
-            orElse: () => pageFiltered.first,
-          );
-
-    final entries = SubtitleParser.parseBilibiliJson(matched.rawJson);
-    return VideoSubtitle(
-      videoId: bvid,
-      language: matched.language,
-      entries: entries,
-    );
-  }
-
   Future<List<video_model.Video>> getAllVideos() async {
     final rows = await _db.getAllVideos();
     final result = <video_model.Video>[];
@@ -349,244 +203,6 @@ class VideoRepository {
   }
 
   // ─── 总结 CRUD ──────────────────────────────────────────────
-
-  Future<List<summary_model.Summary>> getAllSummaries(String bvid) async {
-    final rows = await _db.getSummariesForVideo(bvid);
-    return rows
-        .map((r) => summary_model.Summary(
-              id: r.id,
-              videoId: r.bvid,
-              title: r.title,
-              type: summary_model.SummaryType.values.firstWhere(
-                (t) => t.name == r.type,
-                orElse: () => summary_model.SummaryType.structured,
-              ),
-              content: r.content,
-              modelUsed: r.modelUsed,
-              promptUsed: r.promptUsed,
-              createdAt: r.createdAt,
-              page: r.page,
-            ))
-        .toList();
-  }
-
-  Future<summary_model.Summary?> getSummary(String id) async {
-    final r = await _db.getSummary(id);
-    if (r == null) return null;
-    return summary_model.Summary(
-      id: r.id,
-      videoId: r.bvid,
-      title: r.title,
-      type: summary_model.SummaryType.values.firstWhere(
-        (t) => t.name == r.type,
-        orElse: () => summary_model.SummaryType.structured,
-      ),
-      content: r.content,
-      modelUsed: r.modelUsed,
-      promptUsed: r.promptUsed,
-      createdAt: r.createdAt,
-    );
-  }
-
-  /// 创建总结 (返回保存的记录)
-  Future<summary_model.Summary> createSummary({
-    required String bvid,
-    required String content,
-    required summary_model.SummaryType type,
-    String? title,
-    String? modelUsed,
-    String? promptUsed,
-    String? targetTopic,
-    int page = 0,
-  }) async {
-    final id = _uuid.v4();
-    final finalTitle = title?.trim().isNotEmpty == true
-        ? title!.trim()
-        : _autoTitle(content, type);
-
-    final summary = summary_model.Summary(
-      id: id,
-      videoId: bvid,
-      type: type,
-      content: content,
-      modelUsed: modelUsed ?? '',
-      promptUsed: promptUsed ?? '',
-      createdAt: DateTime.now(),
-      title: finalTitle,
-      page: page,
-    );
-
-    await _db.saveSummary(SummariesCompanion.insert(
-      id: id,
-      bvid: bvid,
-      page: drift.Value(page),
-      title: drift.Value(finalTitle),
-      type: type.name,
-      content: content,
-      modelUsed: drift.Value(modelUsed ?? ''),
-      promptUsed: drift.Value(promptUsed ?? ''),
-      targetTopic: drift.Value(targetTopic ?? ''),
-      createdAt: summary.createdAt,
-    ));
-    _events.emit(SummaryCreated(bvid, summaryId: 0)); // ⭐ wiki 同步
-    return summary;
-  }
-
-  Future<void> deleteSummary(String id) => _db.deleteSummary(id);
-
-  String _autoTitle(String content, summary_model.SummaryType type) {
-    final firstLine = content.split('\n').firstWhere(
-      (l) => l.trim().isNotEmpty && !l.startsWith('#'),
-      orElse: () => '',
-    );
-    final cleaned = firstLine.replaceAll(RegExp(r'[#*\[\]]'), '').trim();
-    if (cleaned.isEmpty) {
-      return '${type.name} ${DateTime.now().toIso8601String().substring(11, 16)}';
-    }
-    return cleaned.length > 40 ? '${cleaned.substring(0, 40)}...' : cleaned;
-  }
-
-  // ─── 对话会话 CRUD ──────────────────────────────────────────────
-
-  Future<List<ChatSession>> getChatSessions(String bvid) =>
-      _db.getChatSessionsForVideo(bvid);
-
-  Future<ChatSession> createChatSession(String bvid, {String? title}) async {
-    final id = _uuid.v4();
-    final now = DateTime.now();
-    final session = ChatSession(
-      id: id,
-      bvid: bvid,
-      title: title ?? _autoSessionTitle(),
-      createdAt: now,
-      lastActiveAt: now,
-    );
-    await _db.saveChatSession(ChatSessionsCompanion.insert(
-      id: id,
-      bvid: bvid,
-      title: drift.Value(session.title),
-      createdAt: now,
-      lastActiveAt: now,
-    ));
-    return session;
-  }
-
-  String _autoSessionTitle() {
-    final now = DateTime.now();
-    return '对话 ${now.month}/${now.day} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-  }
-
-  Future<void> deleteChatSession(String id) => _db.deleteChatSession(id);
-
-  Future<void> updateSessionTitle(String id, String title) =>
-      (_db.update(_db.chatSessions)..where((s) => s.id.equals(id)))
-          .write(ChatSessionsCompanion(title: drift.Value(title)));
-
-  /// 获取会话历史
-  Future<List<ChatMessage>> getChatMessages(String sessionId) =>
-      _db.getChatMessages(sessionId);
-
-  /// 添加消息到会话
-  Future<void> addChatMessage({
-    required String sessionId,
-    required chat_model.ChatRole role,
-    required String content,
-  }) async {
-    await _db.saveChatMessage(ChatMessagesCompanion.insert(
-      id: _uuid.v4(),
-      sessionId: sessionId,
-      role: role.name,
-      content: content,
-      timestamp: DateTime.now(),
-    ));
-    await _db.updateChatSessionLastActive(sessionId);
-    // ⭐ wiki 同步
-    final session = await _db.getChatSession(sessionId);
-    if (session != null) _events.emit(ChatMessageAdded(session.bvid, sessionId: 0));
-  }
-
-  // ─── 上下文压缩 ──────────────────────────────────────────────
-
-  /// 计算消息总字符数
-  Future<int> sessionCharCount(String sessionId) async {
-    final List<ChatMessage> msgs = await _db.getChatMessages(sessionId);
-    int total = 0;
-    for (final m in msgs) {
-      total += m.content.length;
-    }
-    return total;
-  }
-
-  /// 自动压缩: 超出 maxContextChars 时，将最早的几条消息用 LLM 总结成一条
-  Future<bool> compressContextIfNeeded(
-    String sessionId, {
-    required LLMClient llmClient,
-    required AIConfig config,
-  }) async {
-    final msgs = await _db.getChatMessages(sessionId);
-    if (msgs.length < 4) return false; // 太短不压缩
-
-    final totalChars = msgs.fold(0, (sum, m) => sum + m.content.length);
-    if (totalChars <= config.maxContextChars) return false;
-
-    // 取最早的几条消息 (不包含压缩后的 summary)
-    final toCompress = msgs
-        .where((m) => !m.isCompressed)
-        .take(msgs.length ~/ 2) // 压缩一半
-        .toList();
-    if (toCompress.isEmpty) return false;
-
-    final textToCompress = toCompress
-        .map((m) => '${m.role == "user" ? "用户" : "助手"}: ${m.content}')
-        .join('\n');
-
-    try {
-      final disableReasoning = config.provider == LLMProvider.minimax;
-          
-      final summary = await llmClient.chat(
-        systemPrompt:
-            '你是一个对话历史压缩助手。请将以下对话历史压缩为简洁的要点摘要，保留关键信息：\n1. 用户的问题/需求\n2. 助手给出的重要结论/数据\n3. 任何重要的上下文\n\n用中文输出，控制在 ${config.compressTargetChars ~/ 2} 字以内。',
-        userMessage: '以下是需要压缩的对话历史：\n\n$textToCompress',
-        maxTokens: 1000,
-        temperature: 0.2,
-        disableReasoning: disableReasoning,
-      );
-
-      // 删除最早的消息
-      await _db.deleteOldestMessages(sessionId, toCompress.length);
-      // 添加压缩后的系统消息
-      await _db.saveChatMessage(ChatMessagesCompanion.insert(
-        id: _uuid.v4(),
-        sessionId: sessionId,
-        role: 'system',
-        content: '[历史摘要] $summary',
-        timestamp: DateTime.now(),
-      ));
-
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// 构造发给 LLM 的对话历史
-  Future<List<Map<String, String>>> buildChatMessages(
-    String sessionId, {
-    required String transcript,
-  }) async {
-    final msgs = await _db.getChatMessages(sessionId);
-    return [
-      {
-        'role': 'system',
-        'content':
-            '你是视频内容问答助手。基于以下字幕内容回答用户问题。如果问题超出字幕范围，明确告知用户。\n\n字幕内容:\n$transcript',
-      },
-      ...msgs.map((m) => {
-            'role': m.role,
-            'content': m.content,
-          }),
-    ];
-  }
 
   /// 批量添加视频到指定容器 (不下字幕, 用于收藏夹/稍后观看批量导入)
   /// 返回 {success: [bvid], failed: [{bvid, error}]}
@@ -708,4 +324,40 @@ class VideoRepository {
       } catch (_) {}
     }
   }
+
+  // ─── Facade: 委托给子仓库 ─────────────────────────────────
+
+  SubtitleRepository get _subRepo => SubtitleRepository(_bili, _db);
+  SummaryRepository get _sumRepo => SummaryRepository(_db);
+  ChatRepository get _chatRepo => ChatRepository(_db);
+
+  // Subtitle
+  Future<List<VideoSubtitle>> downloadAllSubtitles(String bvid) => _subRepo.downloadAllSubtitles(bvid);
+  Future<VideoSubtitle?> downloadAndStoreSubtitle(String bvid, {int? pageNum, String? language}) =>
+      _subRepo.downloadAndStoreSubtitle(bvid, pageNum: pageNum, language: language);
+  Future<List<Subtitle>> getAllSubtitles(String bvid) => _subRepo.getAllSubtitles(bvid);
+  Future<VideoSubtitle?> getSubtitle(String bvid, {String? language, int? page}) =>
+      _subRepo.getSubtitle(bvid, language: language, page: page);
+
+  // Summary
+  Future<List<summary_model.Summary>> getAllSummaries(String bvid) => _sumRepo.getAllSummaries(bvid);
+  Future<summary_model.Summary?> getSummary(String id) => _sumRepo.getSummary(id);
+  Future<summary_model.Summary> createSummary({required String bvid, required String content, required summary_model.SummaryType type, required String modelUsed, required String promptUsed, String? title, int page = 0, String? targetTopic}) =>
+      _sumRepo.createSummary(bvid: bvid, content: content, type: type, modelUsed: modelUsed, promptUsed: promptUsed, title: title, page: page, targetTopic: targetTopic);
+  Future<void> deleteSummary(String id) => _sumRepo.deleteSummary(id);
+
+  // Chat
+  Future<List<ChatSession>> getChatSessions(String bvid) => _chatRepo.getChatSessions(bvid);
+  Future<ChatSession> createChatSession(String bvid, {String? title}) => _chatRepo.createChatSession(bvid, title: title);
+  Future<void> deleteChatSession(String id) => _chatRepo.deleteChatSession(id);
+  Future<void> updateSessionTitle(String id, String title) => _chatRepo.updateSessionTitle(id, title);
+  Future<List<ChatMessage>> getChatMessages(String sessionId) => _chatRepo.getChatMessages(sessionId);
+  Future<void> addChatMessage({required String sessionId, required chat_model.ChatRole role, required String content}) =>
+      _chatRepo.addChatMessage(sessionId: sessionId, role: role, content: content);
+  Future<int> sessionCharCount(String sessionId) => _chatRepo.sessionCharCount(sessionId);
+  Future<bool> compressContextIfNeeded(String sessionId, {required LLMClient llmClient, required AIConfig config}) =>
+      _chatRepo.compressContextIfNeeded(sessionId, llmClient: llmClient, config: config);
+  Future<List<Map<String, String>>> buildChatMessages(String sessionId, {required String transcript, required String systemPrompt}) =>
+      _chatRepo.buildChatMessages(sessionId, transcript: transcript, systemPrompt: systemPrompt);
+
 }
