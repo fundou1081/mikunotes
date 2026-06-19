@@ -3726,6 +3726,1008 @@ class ContainerVideosCompanion extends UpdateCompanion<ContainerVideo> {
   }
 }
 
+class $CommentsTable extends Comments with TableInfo<$CommentsTable, Comment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CommentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  @override
+  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
+      'bvid', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _pageMeta = const VerificationMeta('page');
+  @override
+  late final GeneratedColumn<int> page = GeneratedColumn<int>(
+      'page', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _aidMeta = const VerificationMeta('aid');
+  @override
+  late final GeneratedColumn<int> aid = GeneratedColumn<int>(
+      'aid', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _rpidMeta = const VerificationMeta('rpid');
+  @override
+  late final GeneratedColumn<int> rpid = GeneratedColumn<int>(
+      'rpid', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _unameMeta = const VerificationMeta('uname');
+  @override
+  late final GeneratedColumn<String> uname = GeneratedColumn<String>(
+      'uname', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _contentMeta =
+      const VerificationMeta('content');
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+      'content', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _likesMeta = const VerificationMeta('likes');
+  @override
+  late final GeneratedColumn<int> likes = GeneratedColumn<int>(
+      'likes', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _rcountMeta = const VerificationMeta('rcount');
+  @override
+  late final GeneratedColumn<int> rcount = GeneratedColumn<int>(
+      'rcount', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _parentMeta = const VerificationMeta('parent');
+  @override
+  late final GeneratedColumn<int> parent = GeneratedColumn<int>(
+      'parent', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _ctimeMeta = const VerificationMeta('ctime');
+  @override
+  late final GeneratedColumn<DateTime> ctime = GeneratedColumn<DateTime>(
+      'ctime', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _fetchedModeMeta =
+      const VerificationMeta('fetchedMode');
+  @override
+  late final GeneratedColumn<String> fetchedMode = GeneratedColumn<String>(
+      'fetched_mode', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('latest'));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        bvid,
+        page,
+        aid,
+        rpid,
+        uname,
+        content,
+        likes,
+        rcount,
+        parent,
+        ctime,
+        fetchedMode
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'comments';
+  @override
+  VerificationContext validateIntegrity(Insertable<Comment> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('bvid')) {
+      context.handle(
+          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
+    } else if (isInserting) {
+      context.missing(_bvidMeta);
+    }
+    if (data.containsKey('page')) {
+      context.handle(
+          _pageMeta, page.isAcceptableOrUnknown(data['page']!, _pageMeta));
+    }
+    if (data.containsKey('aid')) {
+      context.handle(
+          _aidMeta, aid.isAcceptableOrUnknown(data['aid']!, _aidMeta));
+    } else if (isInserting) {
+      context.missing(_aidMeta);
+    }
+    if (data.containsKey('rpid')) {
+      context.handle(
+          _rpidMeta, rpid.isAcceptableOrUnknown(data['rpid']!, _rpidMeta));
+    } else if (isInserting) {
+      context.missing(_rpidMeta);
+    }
+    if (data.containsKey('uname')) {
+      context.handle(
+          _unameMeta, uname.isAcceptableOrUnknown(data['uname']!, _unameMeta));
+    } else if (isInserting) {
+      context.missing(_unameMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(_contentMeta,
+          content.isAcceptableOrUnknown(data['content']!, _contentMeta));
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('likes')) {
+      context.handle(
+          _likesMeta, likes.isAcceptableOrUnknown(data['likes']!, _likesMeta));
+    }
+    if (data.containsKey('rcount')) {
+      context.handle(_rcountMeta,
+          rcount.isAcceptableOrUnknown(data['rcount']!, _rcountMeta));
+    }
+    if (data.containsKey('parent')) {
+      context.handle(_parentMeta,
+          parent.isAcceptableOrUnknown(data['parent']!, _parentMeta));
+    }
+    if (data.containsKey('ctime')) {
+      context.handle(
+          _ctimeMeta, ctime.isAcceptableOrUnknown(data['ctime']!, _ctimeMeta));
+    } else if (isInserting) {
+      context.missing(_ctimeMeta);
+    }
+    if (data.containsKey('fetched_mode')) {
+      context.handle(
+          _fetchedModeMeta,
+          fetchedMode.isAcceptableOrUnknown(
+              data['fetched_mode']!, _fetchedModeMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Comment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Comment(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      bvid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      page: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}page'])!,
+      aid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}aid'])!,
+      rpid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}rpid'])!,
+      uname: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}uname'])!,
+      content: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
+      likes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}likes'])!,
+      rcount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}rcount'])!,
+      parent: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}parent']),
+      ctime: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}ctime'])!,
+      fetchedMode: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}fetched_mode'])!,
+    );
+  }
+
+  @override
+  $CommentsTable createAlias(String alias) {
+    return $CommentsTable(attachedDatabase, alias);
+  }
+}
+
+class Comment extends DataClass implements Insertable<Comment> {
+  final int id;
+  final String bvid;
+  final int page;
+  final int aid;
+  final int rpid;
+  final String uname;
+  final String content;
+  final int likes;
+  final int rcount;
+  final int? parent;
+  final DateTime ctime;
+  final String fetchedMode;
+  const Comment(
+      {required this.id,
+      required this.bvid,
+      required this.page,
+      required this.aid,
+      required this.rpid,
+      required this.uname,
+      required this.content,
+      required this.likes,
+      required this.rcount,
+      this.parent,
+      required this.ctime,
+      required this.fetchedMode});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['bvid'] = Variable<String>(bvid);
+    map['page'] = Variable<int>(page);
+    map['aid'] = Variable<int>(aid);
+    map['rpid'] = Variable<int>(rpid);
+    map['uname'] = Variable<String>(uname);
+    map['content'] = Variable<String>(content);
+    map['likes'] = Variable<int>(likes);
+    map['rcount'] = Variable<int>(rcount);
+    if (!nullToAbsent || parent != null) {
+      map['parent'] = Variable<int>(parent);
+    }
+    map['ctime'] = Variable<DateTime>(ctime);
+    map['fetched_mode'] = Variable<String>(fetchedMode);
+    return map;
+  }
+
+  CommentsCompanion toCompanion(bool nullToAbsent) {
+    return CommentsCompanion(
+      id: Value(id),
+      bvid: Value(bvid),
+      page: Value(page),
+      aid: Value(aid),
+      rpid: Value(rpid),
+      uname: Value(uname),
+      content: Value(content),
+      likes: Value(likes),
+      rcount: Value(rcount),
+      parent:
+          parent == null && nullToAbsent ? const Value.absent() : Value(parent),
+      ctime: Value(ctime),
+      fetchedMode: Value(fetchedMode),
+    );
+  }
+
+  factory Comment.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Comment(
+      id: serializer.fromJson<int>(json['id']),
+      bvid: serializer.fromJson<String>(json['bvid']),
+      page: serializer.fromJson<int>(json['page']),
+      aid: serializer.fromJson<int>(json['aid']),
+      rpid: serializer.fromJson<int>(json['rpid']),
+      uname: serializer.fromJson<String>(json['uname']),
+      content: serializer.fromJson<String>(json['content']),
+      likes: serializer.fromJson<int>(json['likes']),
+      rcount: serializer.fromJson<int>(json['rcount']),
+      parent: serializer.fromJson<int?>(json['parent']),
+      ctime: serializer.fromJson<DateTime>(json['ctime']),
+      fetchedMode: serializer.fromJson<String>(json['fetchedMode']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bvid': serializer.toJson<String>(bvid),
+      'page': serializer.toJson<int>(page),
+      'aid': serializer.toJson<int>(aid),
+      'rpid': serializer.toJson<int>(rpid),
+      'uname': serializer.toJson<String>(uname),
+      'content': serializer.toJson<String>(content),
+      'likes': serializer.toJson<int>(likes),
+      'rcount': serializer.toJson<int>(rcount),
+      'parent': serializer.toJson<int?>(parent),
+      'ctime': serializer.toJson<DateTime>(ctime),
+      'fetchedMode': serializer.toJson<String>(fetchedMode),
+    };
+  }
+
+  Comment copyWith(
+          {int? id,
+          String? bvid,
+          int? page,
+          int? aid,
+          int? rpid,
+          String? uname,
+          String? content,
+          int? likes,
+          int? rcount,
+          Value<int?> parent = const Value.absent(),
+          DateTime? ctime,
+          String? fetchedMode}) =>
+      Comment(
+        id: id ?? this.id,
+        bvid: bvid ?? this.bvid,
+        page: page ?? this.page,
+        aid: aid ?? this.aid,
+        rpid: rpid ?? this.rpid,
+        uname: uname ?? this.uname,
+        content: content ?? this.content,
+        likes: likes ?? this.likes,
+        rcount: rcount ?? this.rcount,
+        parent: parent.present ? parent.value : this.parent,
+        ctime: ctime ?? this.ctime,
+        fetchedMode: fetchedMode ?? this.fetchedMode,
+      );
+  Comment copyWithCompanion(CommentsCompanion data) {
+    return Comment(
+      id: data.id.present ? data.id.value : this.id,
+      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      page: data.page.present ? data.page.value : this.page,
+      aid: data.aid.present ? data.aid.value : this.aid,
+      rpid: data.rpid.present ? data.rpid.value : this.rpid,
+      uname: data.uname.present ? data.uname.value : this.uname,
+      content: data.content.present ? data.content.value : this.content,
+      likes: data.likes.present ? data.likes.value : this.likes,
+      rcount: data.rcount.present ? data.rcount.value : this.rcount,
+      parent: data.parent.present ? data.parent.value : this.parent,
+      ctime: data.ctime.present ? data.ctime.value : this.ctime,
+      fetchedMode:
+          data.fetchedMode.present ? data.fetchedMode.value : this.fetchedMode,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Comment(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('page: $page, ')
+          ..write('aid: $aid, ')
+          ..write('rpid: $rpid, ')
+          ..write('uname: $uname, ')
+          ..write('content: $content, ')
+          ..write('likes: $likes, ')
+          ..write('rcount: $rcount, ')
+          ..write('parent: $parent, ')
+          ..write('ctime: $ctime, ')
+          ..write('fetchedMode: $fetchedMode')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, bvid, page, aid, rpid, uname, content,
+      likes, rcount, parent, ctime, fetchedMode);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Comment &&
+          other.id == this.id &&
+          other.bvid == this.bvid &&
+          other.page == this.page &&
+          other.aid == this.aid &&
+          other.rpid == this.rpid &&
+          other.uname == this.uname &&
+          other.content == this.content &&
+          other.likes == this.likes &&
+          other.rcount == this.rcount &&
+          other.parent == this.parent &&
+          other.ctime == this.ctime &&
+          other.fetchedMode == this.fetchedMode);
+}
+
+class CommentsCompanion extends UpdateCompanion<Comment> {
+  final Value<int> id;
+  final Value<String> bvid;
+  final Value<int> page;
+  final Value<int> aid;
+  final Value<int> rpid;
+  final Value<String> uname;
+  final Value<String> content;
+  final Value<int> likes;
+  final Value<int> rcount;
+  final Value<int?> parent;
+  final Value<DateTime> ctime;
+  final Value<String> fetchedMode;
+  const CommentsCompanion({
+    this.id = const Value.absent(),
+    this.bvid = const Value.absent(),
+    this.page = const Value.absent(),
+    this.aid = const Value.absent(),
+    this.rpid = const Value.absent(),
+    this.uname = const Value.absent(),
+    this.content = const Value.absent(),
+    this.likes = const Value.absent(),
+    this.rcount = const Value.absent(),
+    this.parent = const Value.absent(),
+    this.ctime = const Value.absent(),
+    this.fetchedMode = const Value.absent(),
+  });
+  CommentsCompanion.insert({
+    this.id = const Value.absent(),
+    required String bvid,
+    this.page = const Value.absent(),
+    required int aid,
+    required int rpid,
+    required String uname,
+    required String content,
+    this.likes = const Value.absent(),
+    this.rcount = const Value.absent(),
+    this.parent = const Value.absent(),
+    required DateTime ctime,
+    this.fetchedMode = const Value.absent(),
+  })  : bvid = Value(bvid),
+        aid = Value(aid),
+        rpid = Value(rpid),
+        uname = Value(uname),
+        content = Value(content),
+        ctime = Value(ctime);
+  static Insertable<Comment> custom({
+    Expression<int>? id,
+    Expression<String>? bvid,
+    Expression<int>? page,
+    Expression<int>? aid,
+    Expression<int>? rpid,
+    Expression<String>? uname,
+    Expression<String>? content,
+    Expression<int>? likes,
+    Expression<int>? rcount,
+    Expression<int>? parent,
+    Expression<DateTime>? ctime,
+    Expression<String>? fetchedMode,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bvid != null) 'bvid': bvid,
+      if (page != null) 'page': page,
+      if (aid != null) 'aid': aid,
+      if (rpid != null) 'rpid': rpid,
+      if (uname != null) 'uname': uname,
+      if (content != null) 'content': content,
+      if (likes != null) 'likes': likes,
+      if (rcount != null) 'rcount': rcount,
+      if (parent != null) 'parent': parent,
+      if (ctime != null) 'ctime': ctime,
+      if (fetchedMode != null) 'fetched_mode': fetchedMode,
+    });
+  }
+
+  CommentsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? bvid,
+      Value<int>? page,
+      Value<int>? aid,
+      Value<int>? rpid,
+      Value<String>? uname,
+      Value<String>? content,
+      Value<int>? likes,
+      Value<int>? rcount,
+      Value<int?>? parent,
+      Value<DateTime>? ctime,
+      Value<String>? fetchedMode}) {
+    return CommentsCompanion(
+      id: id ?? this.id,
+      bvid: bvid ?? this.bvid,
+      page: page ?? this.page,
+      aid: aid ?? this.aid,
+      rpid: rpid ?? this.rpid,
+      uname: uname ?? this.uname,
+      content: content ?? this.content,
+      likes: likes ?? this.likes,
+      rcount: rcount ?? this.rcount,
+      parent: parent ?? this.parent,
+      ctime: ctime ?? this.ctime,
+      fetchedMode: fetchedMode ?? this.fetchedMode,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bvid.present) {
+      map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (page.present) {
+      map['page'] = Variable<int>(page.value);
+    }
+    if (aid.present) {
+      map['aid'] = Variable<int>(aid.value);
+    }
+    if (rpid.present) {
+      map['rpid'] = Variable<int>(rpid.value);
+    }
+    if (uname.present) {
+      map['uname'] = Variable<String>(uname.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (likes.present) {
+      map['likes'] = Variable<int>(likes.value);
+    }
+    if (rcount.present) {
+      map['rcount'] = Variable<int>(rcount.value);
+    }
+    if (parent.present) {
+      map['parent'] = Variable<int>(parent.value);
+    }
+    if (ctime.present) {
+      map['ctime'] = Variable<DateTime>(ctime.value);
+    }
+    if (fetchedMode.present) {
+      map['fetched_mode'] = Variable<String>(fetchedMode.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CommentsCompanion(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('page: $page, ')
+          ..write('aid: $aid, ')
+          ..write('rpid: $rpid, ')
+          ..write('uname: $uname, ')
+          ..write('content: $content, ')
+          ..write('likes: $likes, ')
+          ..write('rcount: $rcount, ')
+          ..write('parent: $parent, ')
+          ..write('ctime: $ctime, ')
+          ..write('fetchedMode: $fetchedMode')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DanmakuTable extends Danmaku with TableInfo<$DanmakuTable, DanmakuData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DanmakuTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  @override
+  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
+      'bvid', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _pageMeta = const VerificationMeta('page');
+  @override
+  late final GeneratedColumn<int> page = GeneratedColumn<int>(
+      'page', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _cidMeta = const VerificationMeta('cid');
+  @override
+  late final GeneratedColumn<int> cid = GeneratedColumn<int>(
+      'cid', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _progressMeta =
+      const VerificationMeta('progress');
+  @override
+  late final GeneratedColumn<int> progress = GeneratedColumn<int>(
+      'progress', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _timeMeta = const VerificationMeta('time');
+  @override
+  late final GeneratedColumn<int> time = GeneratedColumn<int>(
+      'time', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _contentMeta =
+      const VerificationMeta('content');
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+      'content', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+      'color', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0xffffff));
+  static const VerificationMeta _fetchedModeMeta =
+      const VerificationMeta('fetchedMode');
+  @override
+  late final GeneratedColumn<String> fetchedMode = GeneratedColumn<String>(
+      'fetched_mode', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('firstN'));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, bvid, page, cid, progress, time, content, color, fetchedMode];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'danmaku';
+  @override
+  VerificationContext validateIntegrity(Insertable<DanmakuData> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('bvid')) {
+      context.handle(
+          _bvidMeta, bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta));
+    } else if (isInserting) {
+      context.missing(_bvidMeta);
+    }
+    if (data.containsKey('page')) {
+      context.handle(
+          _pageMeta, page.isAcceptableOrUnknown(data['page']!, _pageMeta));
+    }
+    if (data.containsKey('cid')) {
+      context.handle(
+          _cidMeta, cid.isAcceptableOrUnknown(data['cid']!, _cidMeta));
+    } else if (isInserting) {
+      context.missing(_cidMeta);
+    }
+    if (data.containsKey('progress')) {
+      context.handle(_progressMeta,
+          progress.isAcceptableOrUnknown(data['progress']!, _progressMeta));
+    } else if (isInserting) {
+      context.missing(_progressMeta);
+    }
+    if (data.containsKey('time')) {
+      context.handle(
+          _timeMeta, time.isAcceptableOrUnknown(data['time']!, _timeMeta));
+    } else if (isInserting) {
+      context.missing(_timeMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(_contentMeta,
+          content.isAcceptableOrUnknown(data['content']!, _contentMeta));
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+          _colorMeta, color.isAcceptableOrUnknown(data['color']!, _colorMeta));
+    }
+    if (data.containsKey('fetched_mode')) {
+      context.handle(
+          _fetchedModeMeta,
+          fetchedMode.isAcceptableOrUnknown(
+              data['fetched_mode']!, _fetchedModeMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DanmakuData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DanmakuData(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      bvid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bvid'])!,
+      page: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}page'])!,
+      cid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}cid'])!,
+      progress: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}progress'])!,
+      time: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}time'])!,
+      content: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
+      color: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}color'])!,
+      fetchedMode: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}fetched_mode'])!,
+    );
+  }
+
+  @override
+  $DanmakuTable createAlias(String alias) {
+    return $DanmakuTable(attachedDatabase, alias);
+  }
+}
+
+class DanmakuData extends DataClass implements Insertable<DanmakuData> {
+  final int id;
+  final String bvid;
+  final int page;
+  final int cid;
+  final int progress;
+  final int time;
+  final String content;
+  final int color;
+  final String fetchedMode;
+  const DanmakuData(
+      {required this.id,
+      required this.bvid,
+      required this.page,
+      required this.cid,
+      required this.progress,
+      required this.time,
+      required this.content,
+      required this.color,
+      required this.fetchedMode});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['bvid'] = Variable<String>(bvid);
+    map['page'] = Variable<int>(page);
+    map['cid'] = Variable<int>(cid);
+    map['progress'] = Variable<int>(progress);
+    map['time'] = Variable<int>(time);
+    map['content'] = Variable<String>(content);
+    map['color'] = Variable<int>(color);
+    map['fetched_mode'] = Variable<String>(fetchedMode);
+    return map;
+  }
+
+  DanmakuCompanion toCompanion(bool nullToAbsent) {
+    return DanmakuCompanion(
+      id: Value(id),
+      bvid: Value(bvid),
+      page: Value(page),
+      cid: Value(cid),
+      progress: Value(progress),
+      time: Value(time),
+      content: Value(content),
+      color: Value(color),
+      fetchedMode: Value(fetchedMode),
+    );
+  }
+
+  factory DanmakuData.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DanmakuData(
+      id: serializer.fromJson<int>(json['id']),
+      bvid: serializer.fromJson<String>(json['bvid']),
+      page: serializer.fromJson<int>(json['page']),
+      cid: serializer.fromJson<int>(json['cid']),
+      progress: serializer.fromJson<int>(json['progress']),
+      time: serializer.fromJson<int>(json['time']),
+      content: serializer.fromJson<String>(json['content']),
+      color: serializer.fromJson<int>(json['color']),
+      fetchedMode: serializer.fromJson<String>(json['fetchedMode']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bvid': serializer.toJson<String>(bvid),
+      'page': serializer.toJson<int>(page),
+      'cid': serializer.toJson<int>(cid),
+      'progress': serializer.toJson<int>(progress),
+      'time': serializer.toJson<int>(time),
+      'content': serializer.toJson<String>(content),
+      'color': serializer.toJson<int>(color),
+      'fetchedMode': serializer.toJson<String>(fetchedMode),
+    };
+  }
+
+  DanmakuData copyWith(
+          {int? id,
+          String? bvid,
+          int? page,
+          int? cid,
+          int? progress,
+          int? time,
+          String? content,
+          int? color,
+          String? fetchedMode}) =>
+      DanmakuData(
+        id: id ?? this.id,
+        bvid: bvid ?? this.bvid,
+        page: page ?? this.page,
+        cid: cid ?? this.cid,
+        progress: progress ?? this.progress,
+        time: time ?? this.time,
+        content: content ?? this.content,
+        color: color ?? this.color,
+        fetchedMode: fetchedMode ?? this.fetchedMode,
+      );
+  DanmakuData copyWithCompanion(DanmakuCompanion data) {
+    return DanmakuData(
+      id: data.id.present ? data.id.value : this.id,
+      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      page: data.page.present ? data.page.value : this.page,
+      cid: data.cid.present ? data.cid.value : this.cid,
+      progress: data.progress.present ? data.progress.value : this.progress,
+      time: data.time.present ? data.time.value : this.time,
+      content: data.content.present ? data.content.value : this.content,
+      color: data.color.present ? data.color.value : this.color,
+      fetchedMode:
+          data.fetchedMode.present ? data.fetchedMode.value : this.fetchedMode,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DanmakuData(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('page: $page, ')
+          ..write('cid: $cid, ')
+          ..write('progress: $progress, ')
+          ..write('time: $time, ')
+          ..write('content: $content, ')
+          ..write('color: $color, ')
+          ..write('fetchedMode: $fetchedMode')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, bvid, page, cid, progress, time, content, color, fetchedMode);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DanmakuData &&
+          other.id == this.id &&
+          other.bvid == this.bvid &&
+          other.page == this.page &&
+          other.cid == this.cid &&
+          other.progress == this.progress &&
+          other.time == this.time &&
+          other.content == this.content &&
+          other.color == this.color &&
+          other.fetchedMode == this.fetchedMode);
+}
+
+class DanmakuCompanion extends UpdateCompanion<DanmakuData> {
+  final Value<int> id;
+  final Value<String> bvid;
+  final Value<int> page;
+  final Value<int> cid;
+  final Value<int> progress;
+  final Value<int> time;
+  final Value<String> content;
+  final Value<int> color;
+  final Value<String> fetchedMode;
+  const DanmakuCompanion({
+    this.id = const Value.absent(),
+    this.bvid = const Value.absent(),
+    this.page = const Value.absent(),
+    this.cid = const Value.absent(),
+    this.progress = const Value.absent(),
+    this.time = const Value.absent(),
+    this.content = const Value.absent(),
+    this.color = const Value.absent(),
+    this.fetchedMode = const Value.absent(),
+  });
+  DanmakuCompanion.insert({
+    this.id = const Value.absent(),
+    required String bvid,
+    this.page = const Value.absent(),
+    required int cid,
+    required int progress,
+    required int time,
+    required String content,
+    this.color = const Value.absent(),
+    this.fetchedMode = const Value.absent(),
+  })  : bvid = Value(bvid),
+        cid = Value(cid),
+        progress = Value(progress),
+        time = Value(time),
+        content = Value(content);
+  static Insertable<DanmakuData> custom({
+    Expression<int>? id,
+    Expression<String>? bvid,
+    Expression<int>? page,
+    Expression<int>? cid,
+    Expression<int>? progress,
+    Expression<int>? time,
+    Expression<String>? content,
+    Expression<int>? color,
+    Expression<String>? fetchedMode,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bvid != null) 'bvid': bvid,
+      if (page != null) 'page': page,
+      if (cid != null) 'cid': cid,
+      if (progress != null) 'progress': progress,
+      if (time != null) 'time': time,
+      if (content != null) 'content': content,
+      if (color != null) 'color': color,
+      if (fetchedMode != null) 'fetched_mode': fetchedMode,
+    });
+  }
+
+  DanmakuCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? bvid,
+      Value<int>? page,
+      Value<int>? cid,
+      Value<int>? progress,
+      Value<int>? time,
+      Value<String>? content,
+      Value<int>? color,
+      Value<String>? fetchedMode}) {
+    return DanmakuCompanion(
+      id: id ?? this.id,
+      bvid: bvid ?? this.bvid,
+      page: page ?? this.page,
+      cid: cid ?? this.cid,
+      progress: progress ?? this.progress,
+      time: time ?? this.time,
+      content: content ?? this.content,
+      color: color ?? this.color,
+      fetchedMode: fetchedMode ?? this.fetchedMode,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bvid.present) {
+      map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (page.present) {
+      map['page'] = Variable<int>(page.value);
+    }
+    if (cid.present) {
+      map['cid'] = Variable<int>(cid.value);
+    }
+    if (progress.present) {
+      map['progress'] = Variable<int>(progress.value);
+    }
+    if (time.present) {
+      map['time'] = Variable<int>(time.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
+    if (fetchedMode.present) {
+      map['fetched_mode'] = Variable<String>(fetchedMode.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DanmakuCompanion(')
+          ..write('id: $id, ')
+          ..write('bvid: $bvid, ')
+          ..write('page: $page, ')
+          ..write('cid: $cid, ')
+          ..write('progress: $progress, ')
+          ..write('time: $time, ')
+          ..write('content: $content, ')
+          ..write('color: $color, ')
+          ..write('fetchedMode: $fetchedMode')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3739,6 +4741,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ContainersTable containers = $ContainersTable(this);
   late final $ContainerVideosTable containerVideos =
       $ContainerVideosTable(this);
+  late final $CommentsTable comments = $CommentsTable(this);
+  late final $DanmakuTable danmaku = $DanmakuTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3752,7 +4756,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         chatSessions,
         chatMessages,
         containers,
-        containerVideos
+        containerVideos,
+        comments,
+        danmaku
       ];
 }
 
@@ -5632,6 +6638,489 @@ typedef $$ContainerVideosTableProcessedTableManager = ProcessedTableManager<
     ),
     ContainerVideo,
     PrefetchHooks Function()>;
+typedef $$CommentsTableCreateCompanionBuilder = CommentsCompanion Function({
+  Value<int> id,
+  required String bvid,
+  Value<int> page,
+  required int aid,
+  required int rpid,
+  required String uname,
+  required String content,
+  Value<int> likes,
+  Value<int> rcount,
+  Value<int?> parent,
+  required DateTime ctime,
+  Value<String> fetchedMode,
+});
+typedef $$CommentsTableUpdateCompanionBuilder = CommentsCompanion Function({
+  Value<int> id,
+  Value<String> bvid,
+  Value<int> page,
+  Value<int> aid,
+  Value<int> rpid,
+  Value<String> uname,
+  Value<String> content,
+  Value<int> likes,
+  Value<int> rcount,
+  Value<int?> parent,
+  Value<DateTime> ctime,
+  Value<String> fetchedMode,
+});
+
+class $$CommentsTableFilterComposer
+    extends Composer<_$AppDatabase, $CommentsTable> {
+  $$CommentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get page => $composableBuilder(
+      column: $table.page, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get aid => $composableBuilder(
+      column: $table.aid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get rpid => $composableBuilder(
+      column: $table.rpid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get uname => $composableBuilder(
+      column: $table.uname, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get content => $composableBuilder(
+      column: $table.content, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get likes => $composableBuilder(
+      column: $table.likes, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get rcount => $composableBuilder(
+      column: $table.rcount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get parent => $composableBuilder(
+      column: $table.parent, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get ctime => $composableBuilder(
+      column: $table.ctime, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => ColumnFilters(column));
+}
+
+class $$CommentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CommentsTable> {
+  $$CommentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get page => $composableBuilder(
+      column: $table.page, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get aid => $composableBuilder(
+      column: $table.aid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get rpid => $composableBuilder(
+      column: $table.rpid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get uname => $composableBuilder(
+      column: $table.uname, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get content => $composableBuilder(
+      column: $table.content, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get likes => $composableBuilder(
+      column: $table.likes, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get rcount => $composableBuilder(
+      column: $table.rcount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get parent => $composableBuilder(
+      column: $table.parent, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get ctime => $composableBuilder(
+      column: $table.ctime, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CommentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CommentsTable> {
+  $$CommentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bvid =>
+      $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<int> get page =>
+      $composableBuilder(column: $table.page, builder: (column) => column);
+
+  GeneratedColumn<int> get aid =>
+      $composableBuilder(column: $table.aid, builder: (column) => column);
+
+  GeneratedColumn<int> get rpid =>
+      $composableBuilder(column: $table.rpid, builder: (column) => column);
+
+  GeneratedColumn<String> get uname =>
+      $composableBuilder(column: $table.uname, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<int> get likes =>
+      $composableBuilder(column: $table.likes, builder: (column) => column);
+
+  GeneratedColumn<int> get rcount =>
+      $composableBuilder(column: $table.rcount, builder: (column) => column);
+
+  GeneratedColumn<int> get parent =>
+      $composableBuilder(column: $table.parent, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get ctime =>
+      $composableBuilder(column: $table.ctime, builder: (column) => column);
+
+  GeneratedColumn<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => column);
+}
+
+class $$CommentsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CommentsTable,
+    Comment,
+    $$CommentsTableFilterComposer,
+    $$CommentsTableOrderingComposer,
+    $$CommentsTableAnnotationComposer,
+    $$CommentsTableCreateCompanionBuilder,
+    $$CommentsTableUpdateCompanionBuilder,
+    (Comment, BaseReferences<_$AppDatabase, $CommentsTable, Comment>),
+    Comment,
+    PrefetchHooks Function()> {
+  $$CommentsTableTableManager(_$AppDatabase db, $CommentsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CommentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CommentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CommentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> bvid = const Value.absent(),
+            Value<int> page = const Value.absent(),
+            Value<int> aid = const Value.absent(),
+            Value<int> rpid = const Value.absent(),
+            Value<String> uname = const Value.absent(),
+            Value<String> content = const Value.absent(),
+            Value<int> likes = const Value.absent(),
+            Value<int> rcount = const Value.absent(),
+            Value<int?> parent = const Value.absent(),
+            Value<DateTime> ctime = const Value.absent(),
+            Value<String> fetchedMode = const Value.absent(),
+          }) =>
+              CommentsCompanion(
+            id: id,
+            bvid: bvid,
+            page: page,
+            aid: aid,
+            rpid: rpid,
+            uname: uname,
+            content: content,
+            likes: likes,
+            rcount: rcount,
+            parent: parent,
+            ctime: ctime,
+            fetchedMode: fetchedMode,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String bvid,
+            Value<int> page = const Value.absent(),
+            required int aid,
+            required int rpid,
+            required String uname,
+            required String content,
+            Value<int> likes = const Value.absent(),
+            Value<int> rcount = const Value.absent(),
+            Value<int?> parent = const Value.absent(),
+            required DateTime ctime,
+            Value<String> fetchedMode = const Value.absent(),
+          }) =>
+              CommentsCompanion.insert(
+            id: id,
+            bvid: bvid,
+            page: page,
+            aid: aid,
+            rpid: rpid,
+            uname: uname,
+            content: content,
+            likes: likes,
+            rcount: rcount,
+            parent: parent,
+            ctime: ctime,
+            fetchedMode: fetchedMode,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CommentsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CommentsTable,
+    Comment,
+    $$CommentsTableFilterComposer,
+    $$CommentsTableOrderingComposer,
+    $$CommentsTableAnnotationComposer,
+    $$CommentsTableCreateCompanionBuilder,
+    $$CommentsTableUpdateCompanionBuilder,
+    (Comment, BaseReferences<_$AppDatabase, $CommentsTable, Comment>),
+    Comment,
+    PrefetchHooks Function()>;
+typedef $$DanmakuTableCreateCompanionBuilder = DanmakuCompanion Function({
+  Value<int> id,
+  required String bvid,
+  Value<int> page,
+  required int cid,
+  required int progress,
+  required int time,
+  required String content,
+  Value<int> color,
+  Value<String> fetchedMode,
+});
+typedef $$DanmakuTableUpdateCompanionBuilder = DanmakuCompanion Function({
+  Value<int> id,
+  Value<String> bvid,
+  Value<int> page,
+  Value<int> cid,
+  Value<int> progress,
+  Value<int> time,
+  Value<String> content,
+  Value<int> color,
+  Value<String> fetchedMode,
+});
+
+class $$DanmakuTableFilterComposer
+    extends Composer<_$AppDatabase, $DanmakuTable> {
+  $$DanmakuTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get page => $composableBuilder(
+      column: $table.page, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get cid => $composableBuilder(
+      column: $table.cid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get time => $composableBuilder(
+      column: $table.time, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get content => $composableBuilder(
+      column: $table.content, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get color => $composableBuilder(
+      column: $table.color, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => ColumnFilters(column));
+}
+
+class $$DanmakuTableOrderingComposer
+    extends Composer<_$AppDatabase, $DanmakuTable> {
+  $$DanmakuTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get bvid => $composableBuilder(
+      column: $table.bvid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get page => $composableBuilder(
+      column: $table.page, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get cid => $composableBuilder(
+      column: $table.cid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get time => $composableBuilder(
+      column: $table.time, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get content => $composableBuilder(
+      column: $table.content, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get color => $composableBuilder(
+      column: $table.color, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DanmakuTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DanmakuTable> {
+  $$DanmakuTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bvid =>
+      $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<int> get page =>
+      $composableBuilder(column: $table.page, builder: (column) => column);
+
+  GeneratedColumn<int> get cid =>
+      $composableBuilder(column: $table.cid, builder: (column) => column);
+
+  GeneratedColumn<int> get progress =>
+      $composableBuilder(column: $table.progress, builder: (column) => column);
+
+  GeneratedColumn<int> get time =>
+      $composableBuilder(column: $table.time, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get fetchedMode => $composableBuilder(
+      column: $table.fetchedMode, builder: (column) => column);
+}
+
+class $$DanmakuTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DanmakuTable,
+    DanmakuData,
+    $$DanmakuTableFilterComposer,
+    $$DanmakuTableOrderingComposer,
+    $$DanmakuTableAnnotationComposer,
+    $$DanmakuTableCreateCompanionBuilder,
+    $$DanmakuTableUpdateCompanionBuilder,
+    (DanmakuData, BaseReferences<_$AppDatabase, $DanmakuTable, DanmakuData>),
+    DanmakuData,
+    PrefetchHooks Function()> {
+  $$DanmakuTableTableManager(_$AppDatabase db, $DanmakuTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DanmakuTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DanmakuTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DanmakuTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> bvid = const Value.absent(),
+            Value<int> page = const Value.absent(),
+            Value<int> cid = const Value.absent(),
+            Value<int> progress = const Value.absent(),
+            Value<int> time = const Value.absent(),
+            Value<String> content = const Value.absent(),
+            Value<int> color = const Value.absent(),
+            Value<String> fetchedMode = const Value.absent(),
+          }) =>
+              DanmakuCompanion(
+            id: id,
+            bvid: bvid,
+            page: page,
+            cid: cid,
+            progress: progress,
+            time: time,
+            content: content,
+            color: color,
+            fetchedMode: fetchedMode,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String bvid,
+            Value<int> page = const Value.absent(),
+            required int cid,
+            required int progress,
+            required int time,
+            required String content,
+            Value<int> color = const Value.absent(),
+            Value<String> fetchedMode = const Value.absent(),
+          }) =>
+              DanmakuCompanion.insert(
+            id: id,
+            bvid: bvid,
+            page: page,
+            cid: cid,
+            progress: progress,
+            time: time,
+            content: content,
+            color: color,
+            fetchedMode: fetchedMode,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DanmakuTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DanmakuTable,
+    DanmakuData,
+    $$DanmakuTableFilterComposer,
+    $$DanmakuTableOrderingComposer,
+    $$DanmakuTableAnnotationComposer,
+    $$DanmakuTableCreateCompanionBuilder,
+    $$DanmakuTableUpdateCompanionBuilder,
+    (DanmakuData, BaseReferences<_$AppDatabase, $DanmakuTable, DanmakuData>),
+    DanmakuData,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5654,4 +7143,8 @@ class $AppDatabaseManager {
       $$ContainersTableTableManager(_db, _db.containers);
   $$ContainerVideosTableTableManager get containerVideos =>
       $$ContainerVideosTableTableManager(_db, _db.containerVideos);
+  $$CommentsTableTableManager get comments =>
+      $$CommentsTableTableManager(_db, _db.comments);
+  $$DanmakuTableTableManager get danmaku =>
+      $$DanmakuTableTableManager(_db, _db.danmaku);
 }

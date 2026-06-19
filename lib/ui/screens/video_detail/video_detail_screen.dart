@@ -14,10 +14,13 @@ import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
+import 'package:mikunotes/core/bilibili/danmaku_client.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
 import 'package:mikunotes/ui/screens/video_detail/page_list_page.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
-import 'package:drift/drift.dart' as drift show Value;
+import 'package:mikunotes/core/storage/database.dart' show CommentsCompanion, DanmakuCompanion;
+import 'package:drift/drift.dart' as drift;
+import 'package:drift/drift.dart' show Value;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -116,15 +119,40 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
                 mode: LaunchMode.externalApplication,
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.comment),
-              tooltip: '导出评论分析',
-              onPressed: _showCommentAnalysis,
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: '刷新字幕',
-              onPressed: _loadingSubtitle ? null : _refreshSubtitles,
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.download),
+              tooltip: '下载原始数据',
+              onSelected: (v) {
+                if (v == 'subtitle') _refreshSubtitles();
+                if (v == 'comment') _showDownloadCommentsSheet();
+                if (v == 'danmaku') _showDownloadDanmakuSheet();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'subtitle',
+                  child: Row(children: [
+                    Icon(Icons.subtitles, size: 18),
+                    SizedBox(width: 8),
+                    Text('刷新字幕'),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'comment',
+                  child: Row(children: [
+                    Icon(Icons.comment, size: 18),
+                    SizedBox(width: 8),
+                    Text('下载评论'),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'danmaku',
+                  child: Row(children: [
+                    Icon(Icons.lightbulb_outline, size: 18),
+                    SizedBox(width: 8),
+                    Text('下载弹幕'),
+                  ]),
+                ),
+              ],
             ),
           ],
           bottom: const TabBar(tabs: [
@@ -336,6 +364,175 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         content: const SizedBox(height:60, child:Center(child:CircularProgressIndicator())),
       ),
     );
+  }
+
+  // ─── 下载评论 (手动) ─────────────────────────────────────
+
+  Future<void> _showDownloadCommentsSheet() async {
+    final result = await showModalBottomSheet<_CommentDownloadConfig>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => const _DownloadCommentsSheet(),
+    );
+    if (result == null) return;
+
+    _showLoading('拉取评论中...');
+    try {
+      // 先拿 aid
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.bvid);
+      final aid = (info['aid'] as int?) ?? 0;
+      if (aid == 0) throw '无法获取视频 aid';
+      // 拉评论
+      final client = ref.read(commentClientProvider);
+      final pageCount = _pageCount;
+      final pagesToFetch = (result.maxCount / 20).ceil().clamp(1, 30);
+      final fetched = await client.fetchComments(aid, maxPages: pagesToFetch);
+      // 过滤
+      var comments = fetched.comments;
+      if (result.filterShort) {
+        comments = comments.where((c) => c.content.length >= 2).toList();
+      }
+      if (result.filterDigits) {
+        comments = comments.where((c) {
+            final t = c.content.trim();
+            return !RegExp(r'^[\\d\\?\\!\\.\\s]+$').hasMatch(t);
+        }).toList();
+      }
+      if (result.filterDuplicate) {
+        final seen = <String>{};
+        comments = comments.where((c) {
+            final key = c.content.substring(0, c.content.length > 20 ? 20 : c.content.length);
+            if (seen.contains(key)) return false;
+            seen.add(key);
+            return true;
+        }).toList();
+      }
+      // 采样 (随机/前N)
+      if (result.mode == 'random') {
+        comments.shuffle();
+      }
+      if (comments.length > result.maxCount) {
+        comments = comments.sublist(0, result.maxCount);
+      }
+      // 存 DB (全部都存, 按 page=selectedPage)
+      final page = _selectedPage == 0 ? 1 : _selectedPage;
+      final db = ref.read(databaseProvider);
+      await db.clearComments(widget.bvid, page: page);
+      await db.insertComments(comments.map((c) => CommentsCompanion.insert(
+        bvid: widget.bvid,
+        page: drift.Value(page),
+        aid: aid,
+        rpid: c.rpid,
+        uname: c.uname,
+        content: c.content,
+        likes: drift.Value(c.like),
+        rcount: drift.Value(0),  // BilibiliComment 无此字段
+        parent: const drift.Value.absent(),  // 只存主评论, 不存子评论
+        ctime: DateTime.fromMillisecondsSinceEpoch(c.ctime * 1000),
+        fetchedMode: Value(result.mode),
+      )).toList());
+
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✓ 评论已保存: ${comments.length} 条 (page=$page)')),
+      );
+      setState(() {}); // 刷新 UI
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✗ 下载评论失败: $e')),
+      );
+    }
+  }
+
+  // ─── 下载弹幕 (手动, v0.7.1 占位) ──────────────────────────
+
+  Future<void> _showDownloadDanmakuSheet() async {
+    final result = await showModalBottomSheet<_DanmakuDownloadConfig>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => const _DownloadDanmakuSheet(),
+    );
+    if (result == null) return;
+
+    final db = ref.read(databaseProvider);
+    final page = _selectedPage == 0 ? 1 : _selectedPage;
+    final existingCount = await db.getDanmakuCount(widget.bvid);
+    if (existingCount > 0) {
+      // 如果已有数据, 弹窗确认
+      final overwrite = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('已有弹幕数据'),
+          content: Text('当前有 $existingCount 条弹幕, 覆盖吗?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('覆盖')),
+          ],
+        ),
+      );
+      if (overwrite != true) return;
+    }
+
+    _showLoading('拉取弹幕中...');
+    try {
+      // 先拿 cid (从 videos 表)
+      final dbLocal = ref.read(databaseProvider);
+      final videoRow = await (dbLocal.select(dbLocal.videos)
+            ..where((v) => v.bvid.equals(widget.bvid) & v.page.equals(page)))
+          .getSingleOrNull();
+      if (videoRow == null) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先下载字幕, 获取 cid')),
+        );
+        return;
+      }
+      final cid = videoRow.cid;
+      if (cid == 0) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('cid 为 0, 请重新下载字幕')),
+        );
+        return;
+      }
+      final client = ref.read(danmakuClientProvider);
+      final fetched = await client.fetchDanmaku(cid);
+      if (!mounted) return;
+      Navigator.pop(context);
+      // v0.7.1 占位
+      if (fetched.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ ${fetched.error}\n弹幕下载将在 v0.7.2 实现'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+      if (fetched.danmaku.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('该视频暂无弹幕')),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✗ 下载弹幕失败: $e')),
+      );
+    }
   }
 }
 
@@ -1714,4 +1911,230 @@ class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
       ),
     );
   }
+}
+
+// ─── 下载评论 配置 + Sheet ─────────────────────────────────
+
+class _CommentDownloadConfig {
+    final String mode;     // 'first' | 'random'
+    final int maxCount;
+    final bool filterShort;
+    final bool filterDigits;
+    final bool filterDuplicate;
+
+    const _CommentDownloadConfig({
+        required this.mode,
+        required this.maxCount,
+        this.filterShort = false,
+        this.filterDigits = false,
+        this.filterDuplicate = false,
+    });
+}
+
+class _DownloadCommentsSheet extends StatefulWidget {
+    const _DownloadCommentsSheet();
+
+    @override
+    State<_DownloadCommentsSheet> createState() => _DownloadCommentsSheetState();
+}
+
+class _DownloadCommentsSheetState extends State<_DownloadCommentsSheet> {
+    String _mode = 'first';
+    int _maxCount = 100;
+    bool _filterShort = false;
+    bool _filterDigits = true;
+    bool _filterDuplicate = true;
+
+    @override
+    Widget build(BuildContext context) {
+        return SafeArea(
+            child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        const Text('下载评论', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const Text('B 站评论手动下载, 按 (bvid, page) 分P 存',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 16),
+                        const Text('采样方式', style: TextStyle(fontWeight: FontWeight.bold)),
+                        RadioListTile(
+                            value: 'first', groupValue: _mode,
+                            onChanged: (v) => setState(() => _mode = v!),
+                            title: const Text('前 N 条 (按时间/热度)'),
+                        ),
+                        RadioListTile(
+                            value: 'random', groupValue: _mode,
+                            onChanged: (v) => setState(() => _mode = v!),
+                            title: const Text('随机 N 条'),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text('下载数量', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Slider(
+                            value: _maxCount.toDouble(),
+                            min: 20, max: 500, divisions: 24,
+                            label: '$_maxCount 条',
+                            onChanged: (v) => setState(() => _maxCount = v.round()),
+                        ),
+                        Text('共 $_maxCount 条', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        const Divider(),
+                        const Text('过滤选项', style: TextStyle(fontWeight: FontWeight.bold)),
+                        CheckboxListTile(
+                            value: _filterShort,
+                            onChanged: (v) => setState(() => _filterShort = v ?? false),
+                            title: const Text('过滤短内容 (< 2 字)'),
+                            dense: true,
+                        ),
+                        CheckboxListTile(
+                            value: _filterDigits,
+                            onChanged: (v) => setState(() => _filterDigits = v ?? false),
+                            title: const Text('过滤纯数字/标点 (1234, ???)'),
+                            dense: true,
+                        ),
+                        CheckboxListTile(
+                            value: _filterDuplicate,
+                            onChanged: (v) => setState(() => _filterDuplicate = v ?? false),
+                            title: const Text('过滤重复 (前 20 字去重)'),
+                            dense: true,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                            children: [
+                                Expanded(
+                                    child: OutlinedButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('取消'),
+                                    ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                    child: FilledButton.icon(
+                                        onPressed: () {
+                                            Navigator.pop(context,
+                                                _CommentDownloadConfig(
+                                                    mode: _mode,
+                                                    maxCount: _maxCount,
+                                                    filterShort: _filterShort,
+                                                    filterDigits: _filterDigits,
+                                                    filterDuplicate: _filterDuplicate,
+                                                ));
+                                        },
+                                        icon: const Icon(Icons.download),
+                                        label: const Text('下载'),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+        );
+    }
+}
+
+// ─── 下载弹幕 配置 + Sheet ─────────────────────────────────
+
+class _DanmakuDownloadConfig {
+    final int maxCount;
+    final bool filterShort;
+    final bool filterDigits;
+    final bool filterDuplicate;
+
+    const _DanmakuDownloadConfig({
+        required this.maxCount,
+        this.filterShort = false,
+        this.filterDigits = false,
+        this.filterDuplicate = false,
+    });
+}
+
+class _DownloadDanmakuSheet extends StatefulWidget {
+    const _DownloadDanmakuSheet();
+
+    @override
+    State<_DownloadDanmakuSheet> createState() => _DownloadDanmakuSheetState();
+}
+
+class _DownloadDanmakuSheetState extends State<_DownloadDanmakuSheet> {
+    int _maxCount = 200;
+    bool _filterShort = false;
+    bool _filterDigits = true;
+    bool _filterDuplicate = true;
+
+    @override
+    Widget build(BuildContext context) {
+        return SafeArea(
+            child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        const Text('下载弹幕', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const Text('B 站弹幕手动下载, 按 (bvid, page) 分P 存\n⚠️ v0.7.1 占位, 真实下载 v0.7.2 上线',
+                            style: TextStyle(fontSize: 12, color: Colors.orange)),
+                        const SizedBox(height: 16),
+                        const Text('下载数量', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Slider(
+                            value: _maxCount.toDouble(),
+                            min: 50, max: 1000, divisions: 19,
+                            label: '$_maxCount 条',
+                            onChanged: (v) => setState(() => _maxCount = v.round()),
+                        ),
+                        Text('共 $_maxCount 条', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        const Divider(),
+                        const Text('过滤选项', style: TextStyle(fontWeight: FontWeight.bold)),
+                        CheckboxListTile(
+                            value: _filterShort,
+                            onChanged: (v) => setState(() => _filterShort = v ?? false),
+                            title: const Text('过滤短内容 (< 2 字)'),
+                            dense: true,
+                        ),
+                        CheckboxListTile(
+                            value: _filterDigits,
+                            onChanged: (v) => setState(() => _filterDigits = v ?? false),
+                            title: const Text('过滤纯数字/标点'),
+                            dense: true,
+                        ),
+                        CheckboxListTile(
+                            value: _filterDuplicate,
+                            onChanged: (v) => setState(() => _filterDuplicate = v ?? false),
+                            title: const Text('过滤重复 (前 20 字去重)'),
+                            dense: true,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                            children: [
+                                Expanded(
+                                    child: OutlinedButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('取消'),
+                                    ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                    child: FilledButton.icon(
+                                        onPressed: () {
+                                            Navigator.pop(context,
+                                                _DanmakuDownloadConfig(
+                                                    maxCount: _maxCount,
+                                                    filterShort: _filterShort,
+                                                    filterDigits: _filterDigits,
+                                                    filterDuplicate: _filterDuplicate,
+                                                ));
+                                        },
+                                        icon: const Icon(Icons.download),
+                                        label: const Text('下载'),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+        );
+    }
 }

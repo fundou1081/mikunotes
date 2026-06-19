@@ -133,15 +133,44 @@ class ContainerVideos extends Table {
   Set<Column> get primaryKey => {containerId, bvid};
 }
 
+/// 评论表 (按 (bvid, page) 分P存, 跟 Videos 一致)
+class Comments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get bvid => text()();
+  IntColumn get page => integer().withDefault(const Constant(1))();
+  IntColumn get aid => integer()();
+  IntColumn get rpid => integer()();  // B 站评论 ID
+  TextColumn get uname => text()();
+  TextColumn get content => text()();
+  IntColumn get likes => integer().withDefault(const Constant(0))();
+  IntColumn get rcount => integer().withDefault(const Constant(0))();  // 回复数
+  IntColumn get parent => integer().nullable()();  // 父评论 (子评论)
+  DateTimeColumn get ctime => dateTime()();  // 评论时间
+  TextColumn get fetchedMode => text().withDefault(const Constant('latest'))();  // latest / random / firstN
+}
+
+/// 弹幕表 (按 (bvid, page) 分P存)
+class Danmaku extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get bvid => text()();
+  IntColumn get page => integer().withDefault(const Constant(1))();
+  IntColumn get cid => integer()();  // 弹幕的 cid (一般跟字幕 cid 一样)
+  IntColumn get progress => integer()();  // 出现时间 (ms) — 关键字段
+  IntColumn get time => integer()();  // 发送时间 (unix)
+  TextColumn get content => text()();
+  IntColumn get color => integer().withDefault(const Constant(0xffffff))();
+  TextColumn get fetchedMode => text().withDefault(const Constant('firstN'))();
+}
+
 @DriftDatabase(
-  tables: [VideoGroups, Videos, UpMasters, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos],
+  tables: [VideoGroups, Videos, UpMasters, Subtitles, Summaries, ChatSessions, ChatMessages, Containers, ContainerVideos, Comments, Danmaku],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -218,6 +247,11 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('ALTER TABLE summaries ADD COLUMN page INTEGER NOT NULL DEFAULT 0');
             // 7. 删除老表
             await customStatement('DROP TABLE _videos_v5');
+          }
+          if (from < 7) {
+            // v7: 加 Comments + Danmaku 表 (底层数据扩展)
+            await m.createTable(comments);
+            await m.createTable(danmaku);
           }
         },
       );
@@ -316,6 +350,62 @@ class AppDatabase extends _$AppDatabase {
     // 删除容器关联 (避免孤儿引用导致计数不一致)
     await (delete(containerVideos)..where((cv) => cv.bvid.equals(bvid))).go();
     await (delete(videos)..where((v) => v.bvid.equals(bvid))).go();
+  }
+
+  // ─── 评论 ──────────────────────────────────────────────
+
+  Future<List<Comment>> getCommentsForVideo(String bvid, {int? page}) {
+    final q = select(comments)..where((c) => c.bvid.equals(bvid));
+    if (page != null) {
+      q.where((c) => c.page.equals(page));
+    }
+    return (q..orderBy([(c) => OrderingTerm.desc(c.likes)])).get();
+  }
+
+  Future<int> getCommentCount(String bvid) async {
+    final count = countAll(filter: comments.bvid.equals(bvid));
+    final row = await (selectOnly(comments)..addColumns([count])).getSingle();
+    return row.read(count) ?? 0;
+  }
+
+  Future<void> insertComments(List<CommentsCompanion> items) async {
+    await batch((b) {
+      b.insertAll(comments, items);
+    });
+  }
+
+  Future<void> clearComments(String bvid, {int? page}) async {
+    final q = delete(comments)..where((c) => c.bvid.equals(bvid));
+    if (page != null) q.where((c) => c.page.equals(page));
+    await q.go();
+  }
+
+  // ─── 弹幕 ──────────────────────────────────────────────
+
+  Future<List<DanmakuData>> getDanmakuForVideo(String bvid, {int? page}) {
+    final q = select(danmaku)..where((d) => d.bvid.equals(bvid));
+    if (page != null) {
+      q.where((d) => d.page.equals(page));
+    }
+    return (q..orderBy([(d) => OrderingTerm.asc(d.progress)])).get();
+  }
+
+  Future<int> getDanmakuCount(String bvid) async {
+    final count = countAll(filter: danmaku.bvid.equals(bvid));
+    final row = await (selectOnly(danmaku)..addColumns([count])).getSingle();
+    return row.read(count) ?? 0;
+  }
+
+  Future<void> insertDanmaku(List<DanmakuCompanion> items) async {
+    await batch((b) {
+      b.insertAll(danmaku, items);
+    });
+  }
+
+  Future<void> clearDanmaku(String bvid, {int? page}) async {
+    final q = delete(danmaku)..where((d) => d.bvid.equals(bvid));
+    if (page != null) q.where((d) => d.page.equals(page));
+    await q.go();
   }
 
   // ─── 字幕 ──────────────────────────────────────────────
