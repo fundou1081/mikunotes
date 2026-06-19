@@ -11,6 +11,7 @@ import 'package:mikunotes/core/storage/database.dart' show Comment, DanmakuData;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
+import 'package:mikunotes/core/models/chat_message.dart' as chat_model;
 
 class GenerationState {
   final bool isRunning;
@@ -37,6 +38,9 @@ enum GenerationSource {
 
   /// 弹幕 AI 分析
   danmaku,
+
+  /// 对话生成 (多轮, 保存到 ChatMessage)
+  chat,
 }
 
 /// 通用生成请求 — 所有 source 复用同一个流式通道
@@ -50,7 +54,17 @@ class GenerationRequest {
   final List<Comment>? comments;     // comment
   final List<DanmakuData>? danmaku;  // danmaku
 
-  // ─── template selection ───
+  // ─── chat-specific ───
+  /// 会话 ID (chat 保存到 ChatMessage 用)
+  final String? chatSessionId;
+
+  /// 预渲染的 system prompt (chat 自己渲染, 因为包含变量上下文)
+  final String? chatSystemPrompt;
+
+  /// 对话历史 (多轮消息)
+  final List<Map<String, String>>? chatHistory;
+
+  /// ─── template selection ───
   final String? customPrompt;  // 完全自定义的 prompt
   final String? templateId;     // 选中的模板 ID
 
@@ -64,6 +78,9 @@ class GenerationRequest {
     this.subtitle,
     this.comments,
     this.danmaku,
+    this.chatSessionId,
+    this.chatSystemPrompt,
+    this.chatHistory,
     this.customPrompt,
     this.templateId,
     this.continueFrom,
@@ -119,6 +136,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       GenerationSource.summary => TemplateType.summary,
       GenerationSource.comment => TemplateType.comment,
       GenerationSource.danmaku => TemplateType.danmaku,
+      GenerationSource.chat => TemplateType.chat,
     };
   }
 
@@ -135,13 +153,14 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       GenerationSource.summary => tplSet.activeSummary?.content ?? config.summaryTemplate,
       GenerationSource.comment => tplSet.activeComment?.content ?? '',
       GenerationSource.danmaku => tplSet.activeDanmaku?.content ?? '',
+      GenerationSource.chat => tplSet.activeChat?.content ?? config.chatTemplate,
     };
   }
 
   /// source → 模板变量 (title, text, total 等)
   Map<String, String> _buildTemplateVars(GenerationRequest req, AIConfig config) {
-    final bili = _ref.read(bilibiliClientProvider);
     return switch (req.source) {
+      GenerationSource.chat => <String, String>{}, // chat 不使用模板变量 (使用预渲染 systemPrompt)
       GenerationSource.summary => () {
         final subtitle = req.subtitle!;
         final transcript = subtitle.fullText;
@@ -191,6 +210,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       GenerationSource.summary => '你是B站视频内容总结助手。请严格按提示格式输出。',
       GenerationSource.comment => '你是视频评论分析助手。',
       GenerationSource.danmaku => '你是视频弹幕分析专家。',
+      GenerationSource.chat => '你是一个友好、专业的 AI 助手。',
     };
   }
 
@@ -222,6 +242,11 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
           state = {...state, req.bvid: const GenerationState(error: '暂无弹幕')};
           return;
         }
+      case GenerationSource.chat:
+        if (req.chatSessionId == null || req.chatSystemPrompt == null || req.chatHistory == null) {
+          state = {...state, req.bvid: const GenerationState(error: '对话参数不完整')};
+          return;
+        }
     }
 
     final pageLabel = req.page == 0 ? '整体' : 'P${req.page}';
@@ -229,6 +254,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       GenerationSource.summary => '总结',
       GenerationSource.comment => '评论分析',
       GenerationSource.danmaku => '弹幕分析',
+      GenerationSource.chat => '回复',
     };
 
     state = {...state, req.bvid: GenerationState(
@@ -250,43 +276,53 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
       final client = _ref.read(llmClientProvider);
       final disableReasoning = config.provider == LLMProvider.minimax;
 
-      // 解析模板
-      String tpl;
-      if ((req.customPrompt ?? '').isNotEmpty) {
-        tpl = req.customPrompt!;
+      // ⭐ 渲染 system prompt + messages (chat 跳过模板渲染, 用预渲染值)
+      final String systemPrompt;
+      final List<Map<String, String>> messages;
+      if (req.source == GenerationSource.chat) {
+        systemPrompt = req.chatSystemPrompt!;
+        messages = req.chatHistory!;
       } else {
-        tpl = _resolveTemplate(req.source, req.templateId, config);
-        // 源特定 fallback
-        if (tpl.isEmpty) {
-          tpl = switch (req.source) {
-            GenerationSource.summary => config.summaryTemplate,
-            GenerationSource.comment => llm_tpl.communityCommentTemplate,
-            GenerationSource.danmaku => llm_tpl.danmakuHighFreqTemplate,
-          };
+        // 解析模板
+        String tpl;
+        if ((req.customPrompt ?? '').isNotEmpty) {
+          tpl = req.customPrompt!;
+        } else {
+          tpl = _resolveTemplate(req.source, req.templateId, config);
+          // 源特定 fallback
+          if (tpl.isEmpty) {
+            tpl = switch (req.source) {
+              GenerationSource.summary => config.summaryTemplate,
+              GenerationSource.comment => llm_tpl.communityCommentTemplate,
+              GenerationSource.danmaku => llm_tpl.danmakuHighFreqTemplate,
+              GenerationSource.chat => '', // chat 不使用默认模板
+            };
+          }
         }
-      }
 
-      // 渲染 prompt
-      final vars = _buildTemplateVars(req, config);
-      final systemPrompt = llm_tpl.PromptTemplate.render(tpl, vars);
+        // 渲染 prompt
+        final vars = _buildTemplateVars(req, config);
+        systemPrompt = llm_tpl.PromptTemplate.render(tpl, vars);
 
-      // user message (continue vs normal)
-      String userMessage;
-      if (req.continueFrom != null && req.continueFrom!.isNotEmpty) {
-        userMessage = '''你刚才的输出被中断了。下面是已有的内容：
+        // user message (continue vs normal)
+        String userMessage;
+        if (req.continueFrom != null && req.continueFrom!.isNotEmpty) {
+          userMessage = '''你刚才的输出被中断了。下面是已有的内容：
 
 ${req.continueFrom}
 
 [继续]
 
 请从上一个被截断的句子中间继续接着写，**不要重复**已写过的部分，也不要添加 "好的" "下面继续" 等客套话。直接接着最后一个字写下去，直到结束。''';
-      } else {
-        userMessage = switch (req.source) {
-          GenerationSource.summary => '请开始总结',
-          _ => systemPrompt.contains('{{text}}')
-              ? '请按模板要求输出分析'
-              : '请开始分析',
-        };
+        } else {
+          userMessage = switch (req.source) {
+            GenerationSource.summary => '请开始总结',
+            _ => systemPrompt.contains('{{text}}')
+                ? '请按模板要求输出分析'
+                : '请开始分析',
+          };
+        }
+        messages = [{'role': 'user', 'content': userMessage}];
       }
 
       // ⭐ 流式调用 (核心逻辑)
@@ -300,8 +336,8 @@ ${req.continueFrom}
       StreamSubscription<String>? sub;
 
       sub = client.chatStreamWithFallback(
-        systemPrompt: _systemPromptFor(req.source),
-        messages: [{'role': 'user', 'content': userMessage}],
+        systemPrompt: _systemPromptFor(req.source), // chat 会忽略 (已预渲染)
+        messages: messages,
         disableReasoning: disableReasoning,
         cancelToken: cancelToken,
       ).listen(
@@ -369,48 +405,78 @@ ${req.continueFrom}
         return;
       }
 
-      // ⭐ 保存 Summary — 区分 source
+      // ⭐ 保存结果 — 区分 source
       final repo = _ref.read(videoRepositoryProvider);
-      final promptUsed = switch (req.source) {
-        GenerationSource.summary => systemPrompt,
-        GenerationSource.comment => 'comment',
-        GenerationSource.danmaku => 'danmaku',
-      };
-      final summary = await repo.createSummary(
-        bvid: req.bvid,
-        content: buffer.toString(),
-        type: summary_model.SummaryType.structured,
-        modelUsed: config.effectiveModel,
-        promptUsed: promptUsed,
-        page: req.page,
-      );
 
-      if (req.source == GenerationSource.summary) {
-        repo.extractAndSaveAiTags(bvid: req.bvid, title: 'BV ${req.bvid}', content: buffer.toString());
-      }
+      if (req.source == GenerationSource.chat) {
+        // chat: 保存到 ChatMessage 表
+        await repo.addChatMessage(
+          sessionId: req.chatSessionId!,
+          role: chat_model.ChatRole.assistant,
+          content: buffer.toString(),
+        );
+        state = {...state, req.bvid: GenerationState(
+          isCompleted: true, content: buffer.toString(), source: req.source,
+        )};
+        Future.delayed(const Duration(seconds: 2), () {
+          final s = state[req.bvid];
+          if (s != null && s.isCompleted && s.source == GenerationSource.chat) {
+            state = {...state}..remove(req.bvid);
+          }
+        });
+      } else {
+        // summary/comment/danmaku: 保存到 Summary 表
+        final promptUsed = switch (req.source) {
+          GenerationSource.summary => systemPrompt,
+          GenerationSource.comment => 'comment',
+          GenerationSource.danmaku => 'danmaku',
+          GenerationSource.chat => '', // never reached
+        };
+        final summary = await repo.createSummary(
+          bvid: req.bvid,
+          content: buffer.toString(),
+          type: summary_model.SummaryType.structured,
+          modelUsed: config.effectiveModel,
+          promptUsed: promptUsed,
+          page: req.page,
+        );
 
-      state = {...state, req.bvid: GenerationState(
-        isCompleted: true, content: buffer.toString(),
-        summaryId: summary.id, source: req.source,
-      )};
-      Future.delayed(const Duration(seconds: 2), () {
-        if (state[req.bvid]?.summaryId == summary.id) {
-          state = {...state}..remove(req.bvid);
+        if (req.source == GenerationSource.summary) {
+          repo.extractAndSaveAiTags(bvid: req.bvid, title: 'BV ${req.bvid}', content: buffer.toString());
         }
-      });
+
+        state = {...state, req.bvid: GenerationState(
+          isCompleted: true, content: buffer.toString(),
+          summaryId: summary.id, source: req.source,
+        )};
+        Future.delayed(const Duration(seconds: 2), () {
+          if (state[req.bvid]?.summaryId == summary.id) {
+            state = {...state}..remove(req.bvid);
+          }
+        });
+      }
     } catch (e) {
       final partial = state[req.bvid]?.content ?? req.continueFrom ?? '';
       if (partial.trim().isNotEmpty) {
         try {
           final config = _ref.read(aiConfigProvider);
-          await _ref.read(videoRepositoryProvider).createSummary(
-            bvid: req.bvid,
-            content: '⚠️ 生成中断/出错，已保存部分内容\n\n$partial',
-            type: summary_model.SummaryType.structured,
-            modelUsed: config.effectiveModel,
-            promptUsed: 'partial',
-            page: req.page,
-          );
+          if (req.source == GenerationSource.chat) {
+            // chat: 保存部分为 ChatMessage (让用户能看到生成了一半的内容)
+            await _ref.read(videoRepositoryProvider).addChatMessage(
+              sessionId: req.chatSessionId!,
+              role: chat_model.ChatRole.assistant,
+              content: '⚠️ 生成中断/出错，已保存部分内容\n\n$partial',
+            );
+          } else {
+            await _ref.read(videoRepositoryProvider).createSummary(
+              bvid: req.bvid,
+              content: '⚠️ 生成中断/出错，已保存部分内容\n\n$partial',
+              type: summary_model.SummaryType.structured,
+              modelUsed: config.effectiveModel,
+              promptUsed: 'partial',
+              page: req.page,
+            );
+          }
           state = {...state, req.bvid: GenerationState(
             isRunning: false, error: '$e (部分内容已保存)',
             content: partial, source: req.source,
@@ -477,6 +543,21 @@ ${req.continueFrom}
         danmaku: danmaku,
         customPrompt: customPrompt,
         templateId: templateId,
+      ));
+
+  /// 对话生成 (新) — 多轮 chat, 使用预渲染 systemPrompt + chatHistory
+  Future<void> startChatGeneration({
+    required String bvid,
+    required String sessionId,
+    required String systemPrompt,
+    required List<Map<String, String>> history,
+  }) =>
+      startGeneration(GenerationRequest(
+        bvid: bvid,
+        source: GenerationSource.chat,
+        chatSessionId: sessionId,
+        chatSystemPrompt: systemPrompt,
+        chatHistory: history,
       ));
 
   /// 继续生成 (从已有内容继续)

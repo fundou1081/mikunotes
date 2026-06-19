@@ -34,8 +34,6 @@ class ChatTabState extends ConsumerState<ChatTab> {
 
   db.ChatSession? _currentSession;
   List<db.ChatMessage> _messages = [];
-  String _streamingContent = '';
-  bool _streaming = false;
   int _tokensUsed = 0;
   bool _loading = true;
 
@@ -101,8 +99,6 @@ class ChatTabState extends ConsumerState<ChatTab> {
     setState(() {
       _currentSession = s;
       _messages = msgs;
-      _streamingContent = '';
-      _streaming = false;
       _messageIndex = msgs.length;
       _tokensUsed = LLMClient.estimateTokens(
         '${widget.subtitle?.fullText ?? ''}$totalChars',
@@ -163,7 +159,9 @@ class ChatTabState extends ConsumerState<ChatTab> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _streaming) return;
+    // ⭐ 检查是否已在生成 (从 generationProvider 读)
+    final genState = ref.read(generationProvider)[widget.bvid];
+    if (text.isEmpty || (genState?.source == GenerationSource.chat && genState!.isRunning)) return;
     if (widget.subtitle == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先下载字幕')),
@@ -218,8 +216,6 @@ class ChatTabState extends ConsumerState<ChatTab> {
 
     setState(() {
       _messages = [..._messages, newUserMsg];
-      _streaming = true;
-      _streamingContent = '';
     });
     _messageIndex = _messages.length;
     _controller.clear();
@@ -272,43 +268,24 @@ class ChatTabState extends ConsumerState<ChatTab> {
     });
 
     try {
-      final client = ref.read(llmClientProvider);
-      final config = ref.read(aiConfigProvider);
-      final disableReasoning = config.provider == LLMProvider.minimax;
-          
-      final buffer = StringBuffer();
-      await for (final chunk in client.chatStreamWithFallback(
-        systemPrompt: systemPrompt,
-        messages: history,
-        disableReasoning: disableReasoning,
-      )) {
-        buffer.write(chunk);
-        setState(() => _streamingContent = buffer.toString());
-        _scrollToBottom();
-      }
-
-      // 保存助手消息
-      await repo.addChatMessage(
+      // ⭐ 使用统一的 startChatGeneration (走 generationProvider 流式通道)
+      // genState[widget.bvid] 实时更新, UI 通过 watch 接收 chunk
+      await ref.read(generationProvider.notifier).startChatGeneration(
+        bvid: widget.bvid,
         sessionId: session.id,
-        role: chat_model.ChatRole.assistant,
-        content: buffer.toString(),
+        systemPrompt: systemPrompt,
+        history: history,
       );
 
-      // 重新加载消息列表
+      // 完成后重新加载消息列表
+      if (!mounted) return;
       final msgs = await repo.getChatMessages(session.id);
-      if (mounted) {
-        setState(() {
-          _messages = msgs;
-          _streamingContent = '';
-          _streaming = false;
-        });
-        _scrollToBottom();
-      }
-    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _streaming = false;
-        _streamingContent = '';
+        _messages = msgs;
       });
+      _scrollToBottom();
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('错误: $e')),
@@ -343,6 +320,14 @@ class ChatTabState extends ConsumerState<ChatTab> {
     if (widget.subtitle == null) {
       return const Center(child: Text('请先下载字幕'));
     }
+
+    // ⭐ 订阅 generationProvider 中的流式状态 (chat source)
+    final genState = ref.watch(generationProvider)[widget.bvid];
+    final isChatStreaming = genState?.source == GenerationSource.chat &&
+        (genState?.isRunning ?? false);
+    final streamingText = (genState?.source == GenerationSource.chat)
+        ? genState?.content ?? ''
+        : '';
 
     return Column(
       children: [
@@ -395,11 +380,11 @@ class ChatTabState extends ConsumerState<ChatTab> {
           child: ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.all(16),
-            itemCount: _messages.length + (_streaming ? 1 : 0),
+            itemCount: _messages.length + (isChatStreaming ? 1 : 0),
             itemBuilder: (ctx, i) {
-              if (i == _messages.length && _streaming) {
+              if (i == _messages.length && isChatStreaming) {
                 return ChatBubble(
-                  content: _streamingContent,
+                  content: streamingText.isEmpty ? '(AI 思考中...)' : streamingText,
                   isUser: false,
                   isStreaming: true,
                 );
@@ -428,8 +413,9 @@ class ChatTabState extends ConsumerState<ChatTab> {
                 ),
               ),
               IconButton(
-                onPressed: _streaming ? null : _send,
-                icon: const Icon(Icons.send),
+                onPressed: isChatStreaming ? null : _send,
+                icon: Icon(isChatStreaming ? Icons.stop : Icons.send),
+                tooltip: isChatStreaming ? '生成中...' : '发送',
               ),
             ],
           ),

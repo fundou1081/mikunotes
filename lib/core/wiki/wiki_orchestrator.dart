@@ -17,10 +17,55 @@ class ChatMsg {
     });
 }
 
+/// Wiki 聊天事件 — 包装多轮 LLM 调用 + 流式 chunk + 加载进度
+sealed class WikiChatEvent {
+    const WikiChatEvent();
+}
+
+/// 一轮 LLM 调用开始
+class WikiChatRoundStart extends WikiChatEvent {
+    final int round; // 1 or 2
+    const WikiChatRoundStart(this.round);
+}
+
+/// LLM 流式输出 chunk (UI 实时追加)
+class WikiChatChunk extends WikiChatEvent {
+    final int round;
+    final String chunk;
+    const WikiChatChunk(this.round, this.chunk);
+}
+
+/// LLM 完成一轮 (round 1 完成时同时携带要加载的 BV 列表)
+class WikiChatRoundEnd extends WikiChatEvent {
+    final int round;
+    final String fullContent;  // 本轮完整内容
+    final List<String> bvidsToLoad; // round 1 特有: LLM 想加载的视频
+    const WikiChatRoundEnd({required this.round, required this.fullContent, this.bvidsToLoad = const []});
+}
+
+/// 正在加载视频内容
+class WikiChatLoadingBvids extends WikiChatEvent {
+    final List<String> bvids;
+    const WikiChatLoadingBvids(this.bvids);
+}
+
+/// Wiki chat 错误
+class WikiChatError extends WikiChatEvent {
+    final String message;
+    const WikiChatError(this.message);
+}
+
+/// Wiki chat 完成 (UI 可以显示最终结果)
+class WikiChatDone extends WikiChatEvent {
+    final String content;
+    final List<String> loadedBvids;
+    const WikiChatDone({required this.content, required this.loadedBvids});
+}
+
 /// Wiki 聊天协调器
 /// 实现 skill 风格的渐进性披露:
-///   第 1 轮: 给 LLM manifest, 让它说要加载哪些视频
-///   第 2 轮: 加载这些视频, 再让 LLM 基于内容回答
+///   第 1 轮: 给 LLM manifest, 让它说要加载哪些视频 (流式)
+///   第 2 轮: 加载这些视频, 再让 LLM 基于内容回答 (流式)
 class WikiChatOrchestrator {
     final LLMClient client;
     final WikiContextLoader contextLoader;
@@ -33,60 +78,88 @@ class WikiChatOrchestrator {
         required this.config,
     });
 
-    /// 处理用户消息
-    /// 返回 (完整响应, 加载的 bvids 列表)
-    Future<({String content, List<String> loadedBvids})> handleUserMessage(String userText) async {
+    /// 处理用户消息 — 流式返回 WikiChatEvent
+    Stream<WikiChatEvent> handleUserMessage(String userText) async* {
         history.add(ChatMsg(role: 'user', content: userText, time: DateTime.now()));
 
         // 第 1 轮: 给 LLM manifest
         final manifest = await contextLoader.buildManifestPrompt();
         final systemPrompt = _buildSystemPrompt(manifest);
 
-        final firstResponse = await _callLLM(systemPrompt, [
-            for (final m in history.take(history.length - 1))
-                {'role': m.role, 'content': m.content},
-            {'role': 'user', 'content': userText},
-        ]);
+        yield const WikiChatRoundStart(1);
+
+        final buffer1 = StringBuffer();
+        try {
+            await for (final chunk in _streamLLM(systemPrompt, [
+                for (final m in history.take(history.length - 1))
+                    {'role': m.role, 'content': m.content},
+                {'role': 'user', 'content': userText},
+            ])) {
+                buffer1.write(chunk);
+                yield WikiChatChunk(1, chunk);
+            }
+        } catch (e) {
+            yield WikiChatError('第 1 轮 LLM 调用失败: $e');
+            return;
+        }
+
+        final firstResponse = buffer1.toString();
 
         // 解析 LLM 想加载的 BV 号
         final bvidsToLoad = _extractBvidRequests(firstResponse);
+        yield WikiChatRoundEnd(round: 1, fullContent: firstResponse, bvidsToLoad: bvidsToLoad);
+
         if (bvidsToLoad.isEmpty) {
             // LLM 认为 manifest 够用, 不需要加载
             final cleaned = _stripNeedToReadTags(firstResponse);
             history.add(ChatMsg(role: 'assistant', content: cleaned, time: DateTime.now()));
-            return (content: cleaned, loadedBvids: <String>[]);
+            yield WikiChatDone(content: cleaned, loadedBvids: const []);
+            return;
         }
 
-        // 第 2 轮: 加载视频内容, 再问 LLM
-        final loaded = await contextLoader.loadVideoContents(bvidsToLoad);
+        // 加载视频内容
+        yield WikiChatLoadingBvids(bvidsToLoad);
+        Map<String, String> loaded;
+        try {
+            loaded = await contextLoader.loadVideoContents(bvidsToLoad);
+        } catch (e) {
+            yield WikiChatError('加载视频内容失败: $e');
+            return;
+        }
         final loadedSection = _buildLoadedSection(loaded);
 
-        final secondUserMsg = '$userText\n\n---\n\n我已经加载了以下视频的完整内容:\n\n$loadedSection\n\n请基于这些内容回答。';
+        // 第 2 轮: 加载完后再问 LLM
+        yield const WikiChatRoundStart(2);
+        final buffer2 = StringBuffer();
+        try {
+            await for (final chunk in _streamLLM(systemPrompt, [
+                for (final m in history.take(history.length - 1))
+                    {'role': m.role, 'content': m.content},
+                {'role': 'user', 'content': '$userText\n\n---\n\n我已经加载了以下视频的完整内容:\n\n$loadedSection\n\n请基于这些内容回答。'},
+            ])) {
+                buffer2.write(chunk);
+                yield WikiChatChunk(2, chunk);
+            }
+        } catch (e) {
+            yield WikiChatError('第 2 轮 LLM 调用失败: $e');
+            return;
+        }
 
-        final secondResponse = await _callLLM(systemPrompt, [
-            for (final m in history.take(history.length - 1))
-                {'role': m.role, 'content': m.content},
-            {'role': 'user', 'content': secondUserMsg},
-        ]);
-
+        final secondResponse = buffer2.toString();
         history.add(ChatMsg(
             role: 'assistant', content: secondResponse,
             time: DateTime.now(), loadedBvids: bvidsToLoad));
-        return (content: secondResponse, loadedBvids: bvidsToLoad);
+        yield WikiChatDone(content: secondResponse, loadedBvids: bvidsToLoad);
     }
 
-    /// 单轮 LLM 调用 (非流式, 因为协调器需要完整结果)
-    Future<String> _callLLM(String systemPrompt, List<Map<String, String>> messages) async {
+    /// 单轮 LLM 流式调用
+    Stream<String> _streamLLM(String systemPrompt, List<Map<String, String>> messages) {
         final disableReasoning = config.provider == LLMProvider.minimax;
-        final buffer = StringBuffer();
-        await for (final chunk in client.chatStreamWithFallback(
+        return client.chatStreamWithFallback(
             systemPrompt: systemPrompt,
             messages: messages,
             disableReasoning: disableReasoning,
-        )) {
-            buffer.write(chunk);
-        }
-        return buffer.toString();
+        );
     }
 
     /// 解析 LLM 输出的 <need_to_read>BV1,BV2</need_to_read>

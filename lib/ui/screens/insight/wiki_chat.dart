@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/wiki/wiki_orchestrator.dart';
@@ -21,6 +22,7 @@ class _WikiChatState extends ConsumerState<WikiChat> {
     bool _sending = false;
     String? _error;
     String? _loadingStatus;  // "加载 manifest..." | "加载视频..." | null
+    String _streamingContent = '';  // 实时累积的流式内容 (一轮 LLM 调用中)
 
     @override
     void dispose() {
@@ -53,37 +55,75 @@ class _WikiChatState extends ConsumerState<WikiChat> {
             _sending = true;
             _error = null;
             _inputController.clear();
-            _loadingStatus = '正在思考 (加载 manifest)...';
+            _loadingStatus = '正在加载 manifest...';
+            _streamingContent = '';
         });
         _scrollToBottom();
 
         final messenger = ScaffoldMessenger.of(context);
+        final completer = Completer<void>();
+        final orch = _getOrchestrator();
+        final sub = orch.handleUserMessage(text).listen(
+            (event) {
+                if (!mounted) return;
+                if (event is WikiChatRoundStart) {
+                    setState(() {
+                        _streamingContent = '';
+                        _loadingStatus = '第 ${event.round} 轮 LLM 调用...';
+                    });
+                    _scrollToBottom();
+                } else if (event is WikiChatChunk) {
+                    setState(() => _streamingContent += event.chunk);
+                    _scrollToBottom();
+                } else if (event is WikiChatRoundEnd) {
+                    // round 1 完成, 可能需要加载视频
+                    if (event.bvidsToLoad.isNotEmpty) {
+                        setState(() => _loadingStatus = 'LLM 选择了 ${event.bvidsToLoad.length} 个视频, 加载中...');
+                    }
+                } else if (event is WikiChatLoadingBvids) {
+                    setState(() => _loadingStatus = '加载 ${event.bvids.length} 个视频内容...');
+                } else if (event is WikiChatDone) {
+                    setState(() {
+                        _messages.add(ChatMsg(
+                            role: 'assistant',
+                            content: event.content,
+                            time: DateTime.now(),
+                            loadedBvids: event.loadedBvids,
+                        ));
+                        _loadingStatus = null;
+                        _streamingContent = '';
+                    });
+                    _scrollToBottom();
+                    completer.complete();
+                } else if (event is WikiChatError) {
+                    setState(() {
+                        _error = event.message;
+                        _loadingStatus = null;
+                    });
+                    messenger.showSnackBar(SnackBar(content: Text('✗ ${event.message}')));
+                    completer.complete();
+                }
+            },
+            onError: (e) {
+                if (!mounted) return;
+                setState(() {
+                    _error = '$e';
+                    _loadingStatus = null;
+                });
+                messenger.showSnackBar(SnackBar(content: Text('✗ $e')));
+                if (!completer.isCompleted) completer.complete();
+            },
+            onDone: () {
+                if (!completer.isCompleted) completer.complete();
+            },
+            cancelOnError: true,
+        );
+
         try {
-            final orch = _getOrchestrator();
-            // 同步显示 manifest 加载状态
-            setState(() => _loadingStatus = 'LLM 选择加载哪些视频...');
-            _scrollToBottom();
-
-            final result = await orch.handleUserMessage(text);
-
-            setState(() {
-                _messages.add(ChatMsg(
-                    role: 'assistant',
-                    content: result.content,
-                    time: DateTime.now(),
-                    loadedBvids: result.loadedBvids,
-                ));
-                _loadingStatus = null;
-            });
-            _scrollToBottom();
-        } catch (e) {
-            setState(() {
-                _error = '$e';
-                _loadingStatus = null;
-            });
-            messenger.showSnackBar(SnackBar(content: Text('✗ $e')));
+            await completer.future;
         } finally {
-            setState(() => _sending = false);
+            await sub.cancel();
+            if (mounted) setState(() => _sending = false);
         }
     }
 
@@ -149,6 +189,13 @@ class _WikiChatState extends ConsumerState<WikiChat> {
                             itemCount: _messages.length + (_sending ? 1 : 0),
                             itemBuilder: (ctx, i) {
                                 if (i == _messages.length && _sending) {
+                                    if (_streamingContent.isNotEmpty) {
+                                        return _buildMessage(ChatMsg(
+                                            role: 'assistant',
+                                            content: _streamingContent,
+                                            time: DateTime.now(),
+                                        ));
+                                    }
                                     return _buildStatusBubble(_loadingStatus ?? '...');
                                 }
                                 return _buildMessage(_messages[i]);
