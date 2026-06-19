@@ -1,7 +1,7 @@
 name: mikunotes
 description: MikuNotes - B站视频学习机，把视频变成你的私人知识库
 publish_to: 'none'
-version: 0.7.7+23
+version: 0.7.8+24
 
 environment:
   sdk: ^3.5.0
@@ -37,6 +37,7 @@ dependencies:
   # 工具
   crypto: ^3.0.5
   path: ^1.9.0
+  archive: ^3.6.1  # 用于弹幕原始 deflate 解压 (Dio 不支持 raw deflate)
   path_provider: ^2.1.4
   url_launcher: ^6.3.1
   share_plus: ^10.1.4

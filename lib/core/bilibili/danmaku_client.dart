@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:archive/archive.dart';
 import 'package:mikunotes/core/providers/providers.dart' show bilibiliClientProvider;
 
 /// 单条弹幕
@@ -55,6 +57,7 @@ class DanmakuClient {
               'User-Agent':
                   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
               'Referer': 'https://www.bilibili.com/',
+              'Accept-Encoding': 'gzip, deflate, br',
             },
           ));
 
@@ -63,11 +66,14 @@ class DanmakuClient {
     Future<DanmakuResult> fetchDanmaku(int cid, {int maxSegments = 1}) async {
         try {
             // 优先使用 XML API: https://comment.bilibili.com/{cid}.xml
+            // B 站始终返回 raw deflate 压缩, 用 bytes 接收
             final response = await _dio.get(
                 'https://comment.bilibili.com/$cid.xml',
                 options: Options(
-                    responseType: ResponseType.plain,
+                    responseType: ResponseType.bytes,
                     receiveTimeout: const Duration(seconds: 30),
+                    // 禁用 Dio 自动 Accept-Encoding 处理, 由我们自己手动解压
+                    headers: {'Accept-Encoding': ''},
                 ),
             );
             if (response.statusCode != 200) {
@@ -75,11 +81,31 @@ class DanmakuClient {
                     error: 'HTTP ${response.statusCode}: 弹幕获取失败',
                 );
             }
-            final body = response.data as String?;
+            final body = response.data;
             if (body == null || body.isEmpty) {
                 return DanmakuResult.empty(error: '空响应');
             }
-            return _parseXmlDanmaku(body);
+            // 解压 raw deflate (B站用 zlib raw deflate, 没有 zlib header)
+            String xmlText;
+            try {
+                if (body is List<int>) {
+                    final inflated = Inflate(body).getBytes();
+                    xmlText = utf8.decode(inflated);
+                } else if (body is String) {
+                    // 万一 Dio 已经解压过
+                    xmlText = body;
+                } else {
+                    return DanmakuResult.empty(
+                        error: '未知响应类型: ${body.runtimeType}',
+                    );
+                }
+            } catch (e) {
+                return DanmakuResult.empty(error: '解压失败: $e');
+            }
+            if (xmlText.isEmpty) {
+                return DanmakuResult.empty(error: '空响应');
+            }
+            return _parseXmlDanmaku(xmlText);
         } catch (e) {
             return DanmakuResult.empty(error: '$e');
         }
