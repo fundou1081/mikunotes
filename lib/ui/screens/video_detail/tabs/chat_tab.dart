@@ -29,13 +29,13 @@ class ChatTab extends ConsumerStatefulWidget {
 
 class ChatTabState extends ConsumerState<ChatTab> {
   final _controller = TextEditingController();
+  int _messageIndex = 0;
   final _scrollController = ScrollController();
 
   db.ChatSession? _currentSession;
   List<db.ChatMessage> _messages = [];
   String _streamingContent = '';
   bool _streaming = false;
-  int _messageIndex = 0;
   int _tokensUsed = 0;
   bool _loading = true;
 

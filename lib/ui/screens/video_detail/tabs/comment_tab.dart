@@ -53,7 +53,13 @@ class CommentTabState extends ConsumerState<CommentTab> {
       final dbLocal = ref.read(databaseProvider);
       _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
       _summaries = await dbLocal.getSummariesForVideo(widget.bvid)
-          .then((list) => list.where((s) => s.promptUsed.contains('评论') || s.promptUsed.contains('community') || s.promptUsed.contains('舆情')).toList());
+          .then((list) => list.where((s) => s.promptUsed.contains('community') || s.promptUsed.contains('tech') || s.promptUsed.contains('sentiment') || s.promptUsed.contains('舆情') || s.promptUsed.contains('评论') || s.promptUsed.contains('社区') || s.promptUsed.contains('技术') || s.promptUsed.contains('评论分析')).toList());
+      // ⭐ 自动选中最新总结 (如果没有选中)
+      if (_summaries.isNotEmpty && _selectedSummaryId == null) {
+        _selectedSummaryId = _summaries.first.id;
+      } else if (_selectedSummaryId != null && !_summaries.any((s) => s.id == _selectedSummaryId)) {
+        _selectedSummaryId = _summaries.isNotEmpty ? _summaries.first.id : null;
+      }
     } catch (e) {
       _error = '$e';
     } finally {
@@ -121,7 +127,7 @@ class CommentTabState extends ConsumerState<CommentTab> {
         content: result,
         type: summary_model.SummaryType.structured,
         modelUsed: config.effectiveModel,
-        promptUsed: tpl0.name,
+        promptUsed: 'comment_${tpl0.name}',
         page: _page,
       );
       if (!mounted) return;

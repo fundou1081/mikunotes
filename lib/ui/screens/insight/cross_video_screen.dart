@@ -67,6 +67,7 @@ class _CrossVideoScreenState extends ConsumerState<CrossVideoScreen> {
             title: _title,
             onChunk: (chunk) {
                 if (mounted) {
+                    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
                     ref.read(crossVideoProvider.notifier).state =
                         ref.read(crossVideoProvider).copyWith(content: chunk);
                 }

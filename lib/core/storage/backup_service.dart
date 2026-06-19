@@ -223,8 +223,6 @@ class BackupService {
       final raw = await file.readAsString();
       final backup = jsonDecode(raw) as Map<String, dynamic>;
 
-      final version = backup['version'] as int? ?? 1;
-
       int videoCount = 0;
       int subtitleCount = 0;
       int summaryCount = 0;

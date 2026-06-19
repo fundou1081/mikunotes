@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/wiki/wiki_context.dart';
-import 'package:mikunotes/core/wiki/wiki_storage.dart';
 
 /// 聊天消息
 class ChatMsg {

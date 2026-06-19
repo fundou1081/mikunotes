@@ -32,34 +32,7 @@ import 'package:mikunotes/ui/screens/video_detail/sheets/download_danmaku_sheet.
 import 'package:mikunotes/ui/screens/video_detail/tabs/summary_tab.dart';
 import 'package:mikunotes/ui/screens/video_detail/tabs/chat_tab.dart';
 
-const _uuid = Uuid();
-
 /// 默认总结 prompt
-const _defaultSummaryPrompt = """你是B站视频内容总结助手。请严格按照以下格式输出结构化总结：
-
-## 📺 视频概述
-一句话概括视频主题。
-
-## 🧠 核心概念/名词解释
-用表格列出视频中出现的核心概念、术语、专有名词，并给出简洁解释。
-
-## 💡 有价值的观点
-列举视频中独特、有启发性的观点（3-5条），每条引用视频中的具体论据。
-
-## 🔑 最重要的观点
-提炼视频最核心的1-2个论点，说明为什么这是关键。
-
-## 📐 行文逻辑
-用流程图或层级结构展示视频的论证逻辑。
-
-## ❓ 提问-回答
-针对视频核心议题，设计3-5个关键问答（Q&A格式）。
-
-要求:
-- 使用 Markdown 格式
-- 概念解释简洁准确
-- 观点引用视频原话
-- 板块间用 --- 分隔""";
 
 class VideoDetailScreen extends ConsumerStatefulWidget {
   final String bvid;
@@ -284,88 +257,6 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
   String _pageChipLabel() {
     if (_selectedPage == 0) return '整体 (所有分P) · $_pageCount 个 P';
     return 'P$_selectedPage / $_pageCount';
-  }
-
-  Future<void> _showCommentAnalysis() async {
-    // 1. 问用户要拉多少条
-    final count = await showDialog<int>(
-      context: context,
-      builder: (c) => SimpleDialog(
-        title: const Text('拉取多少条评论？'),
-        children: [
-          _countOption(c, 50, '50 条 (快速概览)'),
-          _countOption(c, 100, '100 条'),
-          _countOption(c, 300, '300 条'),
-          _countOption(c, 500, '500 条 (深度分析)'),
-          _countOption(c, -1, '全部 (可能较慢)'),
-        ],
-      ),
-    );
-    if (count == null) return; // 用户取消
-    final maxPages = count == -1 ? 100 : (count ~/ 20).clamp(1, 100);
-
-    _showLoading('正在拉取评论...');
-    try {
-      // 从 B 站 API 拿 aid
-      final bili = ref.read(bilibiliClientProvider);
-      final info = await bili.getVideoInfo(widget.bvid);
-      final aid = info['aid'] as int?;
-      final title = info['title'] as String? ?? '';
-      if (aid == null || aid == 0) {
-        if (mounted) Navigator.pop(context);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法获取视频 aid')),
-        );
-        return;
-      }
-      final client = ref.read(commentClientProvider);
-      final result = await client.fetchComments(aid, maxPages: maxPages);
-      if (!mounted) return;
-      Navigator.pop(context);
-      if (result.comments.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该视频暂无评论')),
-        );
-        return;
-      }
-      _showLoading('正在 AI 分析评论...');
-      final config = ref.read(aiConfigProvider);
-      final llmClient = ref.read(llmClientProvider);
-      final templates = ref.read(templatesProvider);
-      final activeComment = templates.activeComment;
-      final tpl = activeComment?.content ?? llm_tpl.communityCommentTemplate;
-      final text = result.toText();
-      // 渲染模板变量
-      final prompt = llm_tpl.PromptTemplate.render(tpl, {
-        'video_title': title,
-        'total': '${result.total}',
-        'taken': '${result.comments.length}',
-        'text': text.length > 8000 ? '${text.substring(0, 8000)}...(已截断)' : text,
-      });
-      final analysis = await llmClient.chat(
-        systemPrompt: '你是视频评论分析助手。',
-        userMessage: prompt,
-        maxTokens: 2000,
-        disableReasoning: true,
-      );
-      if (!mounted) return;
-      Navigator.pop(context);
-      showDialog(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: Text('评论分析 (${result.comments.length}/${result.total}条)'),
-          content: SizedBox(width: 500, height: 400,
-            child: SingleChildScrollView(child: SelectableText(analysis)),
-          ),
-          actions: [TextButton(onPressed: ()=>Navigator.pop(c), child: const Text('关闭'))],
-        ),
-      );
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('评论分析失败: $e')),
-      );
-    }
   }
 
   Widget _countOption(BuildContext c, int count, String label) {

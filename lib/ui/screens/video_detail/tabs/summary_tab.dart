@@ -254,6 +254,7 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
                 padding: const EdgeInsets.all(8),
                 child: FilledButton.tonalIcon(
                   onPressed: () {
+                    // ignore: unnecessary_non_null_assertion
                     if (genState!.isCompleted) {
                       // 已完成 → 立即跳到总结视图
                       ref.read(generationProvider.notifier).clear(widget.bvid);
@@ -261,7 +262,9 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
                       ref.read(generationProvider.notifier).cancel(widget.bvid);
                     }
                   },
+                  // ignore: unnecessary_non_null_assertion
                   icon: Icon(genState!.isCompleted ? Icons.check : Icons.stop),
+                  // ignore: unnecessary_non_null_assertion
                   label: Text(genState!.isCompleted ? '查看总结' : '停止生成'),
                 ),
               ),

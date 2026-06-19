@@ -251,7 +251,7 @@ model.Video _videoFromGroup(dynamic v, dynamic g) {
 /// 异步把 db.Video 列表转 model.Video 列表 (需要 JOIN video_groups)
 Future<List<model.Video>> _joinVideosWithGroups(
   List<dynamic> dbVideos,
-  Future<dynamic?> Function(String bvid) getGroup,
+  Future<dynamic> Function(String bvid) getGroup,
 ) async {
   final result = <model.Video>[];
   final groupCache = <String, dynamic>{};

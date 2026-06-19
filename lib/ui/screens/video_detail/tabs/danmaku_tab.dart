@@ -55,6 +55,12 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       _danmaku = await dbLocal.getDanmakuForVideo(widget.bvid, page: _page);
       _summaries = await dbLocal.getSummariesForVideo(widget.bvid)
           .then((list) => list.where((s) => s.promptUsed.contains('danmaku')).toList());
+      // ⭐ 自动选中最新总结 (如果没有选中)
+      if (_summaries.isNotEmpty && _selectedSummaryId == null) {
+        _selectedSummaryId = _summaries.first.id;
+      } else if (_selectedSummaryId != null && !_summaries.any((s) => s.id == _selectedSummaryId)) {
+        _selectedSummaryId = _summaries.isNotEmpty ? _summaries.first.id : null;
+      }
     } catch (e) {
       _error = '$e';
     } finally {

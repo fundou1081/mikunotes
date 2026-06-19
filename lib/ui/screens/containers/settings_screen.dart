@@ -25,7 +25,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  bool _dirty = false;
 
   @override
   void initState() {

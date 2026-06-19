@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/wiki/wiki_orchestrator.dart';
 import 'package:mikunotes/core/wiki/wiki_context.dart';
-import 'package:mikunotes/core/providers/providers.dart' show llmClientProvider, aiConfigProvider, databaseProvider;
+import 'package:mikunotes/core/providers/providers.dart' show llmClientProvider, aiConfigProvider;
 
 /// 💬 Wiki 多轮对话 — Skill 风格渐进性披露
 /// LLM 看到 manifest, 决定要加载哪些视频, 我们加载后再问

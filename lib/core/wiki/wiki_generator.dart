@@ -84,7 +84,7 @@ class WikiGenerator {
                 final typeStr = s.type == 'structured' ? '结构化' : '自定义';
                 buf.writeln('## ${s.createdAt.toIso8601String().substring(0, 19).replaceFirst("T", " ")} · ${typeStr}');
                 buf.writeln();
-                if (s.targetTopic != null && s.targetTopic!.isNotEmpty) {
+                if (s.targetTopic.isNotEmpty) {
                     buf.writeln('**话题**: ${s.targetTopic}');
                     buf.writeln();
                 }
