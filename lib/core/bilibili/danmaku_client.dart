@@ -1,37 +1,30 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/bilibili/bilibili_client.dart';
 import 'package:mikunotes/core/providers/providers.dart' show bilibiliClientProvider;
 
 /// 单条弹幕
 class BilibiliDanmaku {
-    final int progress;  // 出现时间 (ms)
-    final int time;      // 发送时间 (unix sec)
+    final int id;         // 弹幕 ID
+    final int progress;   // 出现时间 (ms)
+    final int time;       // 发送时间 (unix sec)
     final String content;
     final int color;
 
     const BilibiliDanmaku({
+        required this.id,
         required this.progress,
         required this.time,
         required this.content,
         required this.color,
     });
-
-    factory BilibiliDanmaku.fromJson(Map<String, dynamic> j) {
-        return BilibiliDanmaku(
-            progress: (j['progress'] as num?)?.toInt() ?? 0,
-            time: (j['time'] as num?)?.toInt() ?? 0,
-            content: (j['content'] as String?) ?? '',
-            color: (j['color'] as num?)?.toInt() ?? 0xffffff,
-        );
-    }
 }
 
 /// 拉取结果
 class DanmakuResult {
     final List<BilibiliDanmaku> danmaku;
-    final int totalCount;       // B 站返回的总数
-    final bool truncated;       // 是否被截断
+    final int totalCount;
+    final bool truncated;
     final String? error;
 
     const DanmakuResult({
@@ -50,16 +43,13 @@ class DanmakuResult {
 }
 
 /// B 站弹幕客户端
-/// v0.7.1: 占位 (返回空)
-/// v0.7.2: 实现 protobuf 解析 (B 站弹幕 API 是 protobuf 格式)
+/// 使用 XML API: https://comment.bilibili.com/{cid}.xml
+/// 返回格式: <d p="time,type,size,color,unix_time,pool,sender_hash,id">内容</d>
 class DanmakuClient {
     final Dio _dio;
-    final String _sessdata;
 
-    DanmakuClient({required String sessdata})
-        : _sessdata = sessdata,
-          _dio = Dio(BaseOptions(
-            baseUrl: 'https://api.bilibili.com',
+    DanmakuClient()
+        : _dio = Dio(BaseOptions(
             connectTimeout: const Duration(seconds: 15),
             headers: {
               'User-Agent':
@@ -68,25 +58,80 @@ class DanmakuClient {
             },
           ));
 
-    /// 拉弹幕 (历史弹幕 API, 一次性最多 3000 条/段)
+    /// 拉弹幕通过 XML API (不需要 protobuf)
     /// cid = 视频的 cid (不是 aid)
     Future<DanmakuResult> fetchDanmaku(int cid, {int maxSegments = 1}) async {
         try {
-            if (_sessdata.isNotEmpty) {
-                _dio.options.headers['Cookie'] = 'SESSDATA=$_sessdata';
-            }
-            // ⚠️ B 站 /x/v2/dm/web/seg.so 返回 protobuf 二进制
-            // v0.7.1 暂不实现, v0.7.2 用自定义 protobuf 解析
-            return DanmakuResult.empty(
-                error: '弹幕下载将在 v0.7.2 实现 (protobuf 解析)',
+            // 优先使用 XML API: https://comment.bilibili.com/{cid}.xml
+            final response = await _dio.get(
+                'https://comment.bilibili.com/$cid.xml',
+                options: Options(
+                    responseType: ResponseType.plain,
+                    receiveTimeout: const Duration(seconds: 30),
+                ),
             );
+            if (response.statusCode != 200) {
+                return DanmakuResult.empty(
+                    error: 'HTTP ${response.statusCode}: 弹幕获取失败',
+                );
+            }
+            final body = response.data as String?;
+            if (body == null || body.isEmpty) {
+                return DanmakuResult.empty(error: '空响应');
+            }
+            return _parseXmlDanmaku(body);
         } catch (e) {
             return DanmakuResult.empty(error: '$e');
         }
     }
+
+    /// 解析 XML 格式的弹幕
+    /// <d p="490.19100,1,25,16777215,1584268892,0,a16fe0dd,29950852386521095">弹幕内容</d>
+    DanmakuResult _parseXmlDanmaku(String xml) {
+        final danmaku = <BilibiliDanmaku>[];
+        // 正则匹配所有 <d p="..."> 标签
+        final regex = RegExp(r'<d\s+p="([^"]+)"[^>]*>([^<]*)</d>');
+        for (final match in regex.allMatches(xml)) {
+            final attrs = match.group(1) ?? '';
+            final content = match.group(2) ?? '';
+            final parts = attrs.split(',');
+            if (parts.length < 8) continue;
+
+            try {
+                // p="time,type,size,color,unix_time,pool,sender_hash,id"
+                final time = double.parse(parts[0]);  // 秒 (带小数)
+                final sendTime = int.parse(parts[4]);  // unix sec
+                final id = int.parse(parts[7]);        // danmaku id
+                final color = int.parse(parts[3]);      // color
+                final progressMs = (time * 1000).toInt();  // 秒 → ms
+
+                danmaku.add(BilibiliDanmaku(
+                    id: id,
+                    progress: progressMs,
+                    time: sendTime,
+                    content: content.trim(),
+                    color: color,
+                ));
+            } catch (_) {
+                continue;
+            }
+        }
+
+        if (danmaku.isEmpty) {
+            return DanmakuResult.empty(error: '该视频暂无弹幕');
+        }
+
+        // 按时间排序
+        danmaku.sort((a, b) => a.progress.compareTo(b.progress));
+
+        return DanmakuResult(
+            danmaku: danmaku,
+            totalCount: danmaku.length,
+            truncated: false,
+        );
+    }
 }
 
 final danmakuClientProvider = Provider<DanmakuClient>((ref) {
-    final bili = ref.watch(bilibiliClientProvider);
-    return DanmakuClient(sessdata: bili.sessdata);
+    return DanmakuClient();
 });

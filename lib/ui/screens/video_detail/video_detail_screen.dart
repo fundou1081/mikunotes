@@ -17,7 +17,8 @@ import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/bilibili/danmaku_client.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
 import 'package:mikunotes/ui/screens/video_detail/page_list_page.dart';
-import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart';
+import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart' show RawDataTab, CommentTab, DanmakuTab, DataSource;
+import 'package:mikunotes/core/storage/database.dart' show DanmakuData, Comment;
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:mikunotes/core/storage/database.dart' show CommentsCompanion, DanmakuCompanion;
 import 'package:drift/drift.dart' as drift;
@@ -460,7 +461,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     }
   }
 
-  // ─── 下载弹幕 (手动, v0.7.1 占位) ──────────────────────────
+  // ─── 下载弹幕 (手动) ──────────────────────────
 
   Future<void> _showDownloadDanmakuSheet() async {
     final result = await showModalBottomSheet<_DanmakuDownloadConfig>(
@@ -474,12 +475,11 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
     final page = _selectedPage == 0 ? 1 : _selectedPage;
     final existingCount = await db.getDanmakuCount(widget.bvid);
     if (existingCount > 0) {
-      // 如果已有数据, 弹窗确认
       final overwrite = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('已有弹幕数据'),
-          content: Text('当前有 $existingCount 条弹幕, 覆盖吗?'),
+          content: Text('当前有 \$existingCount 条弹幕, 覆盖吗?'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
             TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('覆盖')),
@@ -491,41 +491,26 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
 
     _showLoading('拉取弹幕中...');
     try {
-      // 先拿 cid (从 videos 表)
       final dbLocal = ref.read(databaseProvider);
       final videoRow = await (dbLocal.select(dbLocal.videos)
             ..where((v) => v.bvid.equals(widget.bvid) & v.page.equals(page)))
           .getSingleOrNull();
-      if (videoRow == null) {
-        if (!mounted) return;
-        Navigator.pop(context);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先下载字幕, 获取 cid')),
-        );
-        return;
-      }
-      final cid = videoRow.cid;
+      final cid = videoRow?.cid ?? 0;
+      if (!mounted) return;
+      Navigator.pop(context);
       if (cid == 0) {
         if (!mounted) return;
-        Navigator.pop(context);
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('cid 为 0, 请重新下载字幕')),
+          const SnackBar(content: Text('cid 为 0, 请先下载字幕')),
         );
         return;
       }
       final client = ref.read(danmakuClientProvider);
       final fetched = await client.fetchDanmaku(cid);
       if (!mounted) return;
-      Navigator.pop(context);
-      // v0.7.1 占位
       if (fetched.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⚠️ ${fetched.error}\n弹幕下载将在 v0.7.2 实现'),
-            duration: const Duration(seconds: 5),
-          ),
+          SnackBar(content: Text('✗ \${fetched.error}'), duration: const Duration(seconds: 4)),
         );
         return;
       }
@@ -535,12 +520,50 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         );
         return;
       }
+      // 过滤
+      var danmaku = fetched.danmaku;
+      if (result.filterShort) {
+        danmaku = danmaku.where((d) => d.content.length >= 2).toList();
+      }
+      if (result.filterDigits) {
+        danmaku = danmaku.where((d) {
+          final t = d.content.trim();
+          return !RegExp(r'^[\\d\\?\\!\\.\\s]+\$').hasMatch(t);
+        }).toList();
+      }
+      if (result.filterDuplicate) {
+        final seen = <String>{};
+        danmaku = danmaku.where((d) {
+          final key = d.content.length > 20 ? d.content.substring(0, 20) : d.content;
+          if (seen.contains(key)) return false;
+          seen.add(key);
+          return true;
+        }).toList();
+      }
+      if (danmaku.length > result.maxCount) {
+        danmaku = danmaku.take(result.maxCount).toList();
+      }
+      // 存 DB
+      await db.clearDanmaku(widget.bvid, page: page);
+      await db.insertDanmaku(danmaku.map((d) => DanmakuCompanion.insert(
+        bvid: widget.bvid,
+        cid: cid,
+        progress: d.progress,
+        time: d.time,
+        content: d.content,
+        color: Value(d.color),
+      )).toList());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✓ 弹幕已保存: \${danmaku.length} 条')),
+      );
+      setState(() {}); // 刷新 UI
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✗ 下载弹幕失败: $e')),
+        SnackBar(content: Text('✗ 下载弹幕失败: \$e')),
       );
     }
   }
@@ -1134,10 +1157,25 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   int _tokensUsed = 0;
   bool _loading = true;
 
+  // 数据源选择
+  Set<DataSource> _chatSources = {DataSource.subtitle};
+  List<Comment> _comments = [];
+  List<DanmakuData> _danmaku = [];
+
   @override
   void initState() {
     super.initState();
     _initSession();
+    _loadSources();
+  }
+
+  int get _page => widget.selectedPage == 0 ? 1 : widget.selectedPage;
+
+  Future<void> _loadSources() async {
+    final dbLocal = ref.read(databaseProvider);
+    _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
+    _danmaku = await dbLocal.getDanmakuForVideo(widget.bvid, page: _page);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -1302,23 +1340,47 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     _controller.clear();
     _scrollToBottom();
 
-    // 构造上下文
+    // 构造上下文 (根据数据源 chip 选择)
+    final subText = widget.subtitle?.fullText ?? '';
+    final commentText = _chatSources.contains(DataSource.comment)
+        ? _comments.map((c) => '【${c.likes}赞】${c.uname}: ${c.content}').join('\n')
+        : '';
+    final danmakuText = _chatSources.contains(DataSource.danmaku)
+        ? _danmaku.take(300).map((d) => '[${_fmtTimeMs(d.progress)}] ${d.content}').join('\n')
+        : '';
+
+    final sourceContext = <String>[];
+    if (subText.isNotEmpty && _chatSources.contains(DataSource.subtitle)) {
+      final truncated = subText.length > 4000 ? '\${subText.substring(0, 4000)}...(已截断)' : subText;
+      sourceContext.add('## 字幕文本\n' + truncated);
+    }
+    if (commentText.isNotEmpty) {
+      final truncated = commentText.length > 2000 ? '\${commentText.substring(0, 2000)}...(已截断)' : commentText;
+      sourceContext.add('## 评论\n' + truncated);
+    }
+    if (danmakuText.isNotEmpty) {
+      final truncated = danmakuText.length > 2000 ? '\${danmakuText.substring(0, 2000)}...(已截断)' : danmakuText;
+      sourceContext.add('## 弹幕\n' + truncated);
+    }
+
     final sessionMsgs = await repo.getChatMessages(session.id);
     final history = sessionMsgs
         .map((m) => {'role': m.role, 'content': m.content})
         .toList();
 
-    // 使用模板渲染 system prompt — 优先使用激活的 chat 模板
+    // 使用模板渲染 system prompt (但用选中的数据源替换字幕)
     final templates = ref.read(templatesProvider);
     final activeChat = templates.activeChat;
     final chatTemplate = activeChat?.content ??
         (config.chatTemplate.isNotEmpty ? config.chatTemplate : llm_tpl.defaultChatTemplate);
+    // Build source text from selected chips
+    final sourceText = sourceContext.join('\n\n');
     final systemPrompt = llm_tpl.PromptTemplate.render(chatTemplate, {
       'title': 'BV ${widget.bvid}',
       'bvid': widget.bvid,
-      'subtitle': widget.subtitle!.fullText,
-      'subtitle_truncated': widget.subtitle!.fullText,
-      'language': widget.subtitle!.language,
+      'subtitle': sourceText,
+      'subtitle_truncated': sourceText,
+      'language': widget.subtitle?.language ?? '',
       'uploader': '',
       'duration': '',
       'page_count': '',
@@ -1370,6 +1432,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     }
   }
 
+  String _fmtTimeMs(int ms) {
+    final s = ms ~/ 1000;
+    final m = s ~/ 60;
+    return '\${m.toString().padLeft(2, "0")}:\${(s % 60).toString().padLeft(2, "0")}';
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -1400,6 +1468,33 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           maxTokens: ref.read(aiConfigProvider).maxContextChars ~/ 2,
           onTap: _showSessionList,
           onNew: _newSession,
+        ),
+        // 数据源 chip
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Row(
+            children: [
+              const Text('数据源:', style: TextStyle(fontSize: 11)),
+              const SizedBox(width: 4),
+              ...DataSource.values.map((s) => Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: FilterChip(
+                  label: Text(s.label, style: const TextStyle(fontSize: 10)),
+                  selected: _chatSources.contains(s),
+                  onSelected: (sel) {
+                    setState(() {
+                      if (sel) {
+                        _chatSources.add(s);
+                      } else {
+                        _chatSources.remove(s);
+                      }
+                    });
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+              )),
+            ],
+          ),
         ),
         _ChatSubtitleContext(subtitle: widget.subtitle, selectedPage: widget.selectedPage),
         Expanded(
