@@ -1353,15 +1353,15 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
 
     final sourceContext = <String>[];
     if (subText.isNotEmpty && _chatSources.contains(DataSource.subtitle)) {
-      final truncated = subText.length > 4000 ? '\${subText.substring(0, 4000)}...(已截断)' : subText;
+      final truncated = subText.length > 4000 ? '${subText.substring(0, 4000)}...(已截断)' : subText;
       sourceContext.add('## 字幕文本\n' + truncated);
     }
     if (commentText.isNotEmpty) {
-      final truncated = commentText.length > 2000 ? '\${commentText.substring(0, 2000)}...(已截断)' : commentText;
+      final truncated = commentText.length > 2000 ? '${commentText.substring(0, 2000)}...(已截断)' : commentText;
       sourceContext.add('## 评论\n' + truncated);
     }
     if (danmakuText.isNotEmpty) {
-      final truncated = danmakuText.length > 2000 ? '\${danmakuText.substring(0, 2000)}...(已截断)' : danmakuText;
+      final truncated = danmakuText.length > 2000 ? '${danmakuText.substring(0, 2000)}...(已截断)' : danmakuText;
       sourceContext.add('## 弹幕\n' + truncated);
     }
 

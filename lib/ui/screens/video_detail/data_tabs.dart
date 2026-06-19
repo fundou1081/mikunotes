@@ -28,6 +28,72 @@ enum DataSource {
   const DataSource(this.label);
 }
 
+/// 通用模板选择 Sheet (Summary/Comment/Danmaku 复用)
+/// Returns: 选中的模板 id, 或 null (取消)
+Future<String?> showTemplatePicker(
+  BuildContext context, {
+  required String title,
+  required List<PromptTemplate> templates,
+  required String? activeId,
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) {
+      return DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (ctx, scrollController) {
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  const Icon(Icons.description),
+                  const SizedBox(width: 8),
+                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ]),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: templates.length,
+                  itemBuilder: (ctx, i) {
+                    final t = templates[i];
+                    final isActive = t.id == activeId;
+                    return ListTile(
+                      leading: isActive
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : const Icon(Icons.circle_outlined),
+                      title: Text(t.name),
+                      subtitle: Text(
+                        t.content.replaceAll('\n', ' ').substring(
+                            0,
+                            t.content.length < 60
+                                ? t.content.length
+                                : 60),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: t.isBuiltIn
+                          ? const Chip(label: Text('内置'))
+                          : null,
+                      onTap: () => Navigator.pop(ctx, t.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
 // ─────────────────────────────────────────────────
 // 评论 Tab — 跟摘要 tab 一样, 但 source = 'comment'
 // ─────────────────────────────────────────────────
@@ -100,8 +166,20 @@ class CommentTabState extends ConsumerState<CommentTab> {
         throw '请先在设置配置 API Key';
       }
       final templates = ref.read(templatesProvider);
-      final activeTpl = templates.activeComment;
-      final tpl = activeTpl?.content ?? llm_tpl.communityCommentTemplate;
+      // 弹模板选择器 (跟摘要 tab 一样的 UX)
+      final templateId = await showTemplatePicker(
+        context,
+        title: '选评论模板',
+        templates: templates.comments,
+        activeId: templates.activeCommentId,
+      );
+      if (templateId == null) {
+        setState(() => _generating = false);
+        return; // 用户取消
+      }
+      final tpl0 = templates.comments.firstWhere((t) => t.id == templateId,
+          orElse: () => templates.comments.first);
+      final tpl = tpl0.content;
       // 拼装评论文本
       final text = _comments
           .map((c) => '【${c.likes}赞】${c.uname}: ${c.content}')
@@ -127,7 +205,7 @@ class CommentTabState extends ConsumerState<CommentTab> {
         content: result,
         type: summary_model.SummaryType.structured,
         modelUsed: config.effectiveModel,
-        promptUsed: activeTpl?.name ?? 'comment_community',
+        promptUsed: tpl0.name,
         page: _page,
       );
       if (!mounted) return;
@@ -147,9 +225,44 @@ class CommentTabState extends ConsumerState<CommentTab> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text('错误: $_error'));
 
-    return Column(
-      children: [
-        if (_comments.isNotEmpty)
+    // 有历史总结: 显示总结视图 + picker
+    if (_summaries.isNotEmpty && _selectedSummaryId != null) {
+      return Column(
+        children: [
+          _SummaryPicker(
+            summaries: _summaries,
+            selectedId: _selectedSummaryId,
+            onSelect: (s) => setState(() => _selectedSummaryId = s.id),
+            onDelete: (s) async {
+              await ref.read(videoRepositoryProvider).deleteSummary(s.id);
+              _load();
+            },
+          ),
+          Expanded(
+            child: _SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId)),
+          ),
+        ],
+      );
+    }
+
+    // 空状态: 还没下载评论
+    if (_comments.isEmpty) {
+      return _EmptyDataState(
+        icon: Icons.comment_outlined,
+        label: '请先下载评论',
+        downloadButtonLabel: '下载评论',
+        onDownload: widget.onDownloadRequest,
+      );
+    }
+
+    // 有评论但还没总结: 显示生成按钮 + 历史入口 (跟 Summary tab 一致)
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Spacer(),
+          // 顶部: 数据信息条
           Container(
             padding: const EdgeInsets.all(8),
             color: Theme.of(context).colorScheme.primaryContainer,
@@ -168,37 +281,33 @@ class CommentTabState extends ConsumerState<CommentTab> {
                   icon: const Icon(Icons.refresh, size: 18),
                   onPressed: widget.onDownloadRequest,
                 ),
-                FilledButton.icon(
-                  onPressed: _generating ? null : _generate,
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(_generating ? '生成中...' : '生成 AI 总结'),
-                ),
               ],
             ),
           ),
-        if (_summaries.isNotEmpty)
-          _SummaryPicker(
-            summaries: _summaries,
-            selectedId: _selectedSummaryId,
-            onSelect: (s) => setState(() => _selectedSummaryId = s.id),
-            onDelete: (s) async {
-              await ref.read(videoRepositoryProvider).deleteSummary(s.id);
-              _load();
-            },
-          ),
-        Expanded(
-          child: _comments.isEmpty
-              ? _EmptyDataState(
-                  icon: Icons.comment_outlined,
-                  label: '请先下载评论',
-                  downloadButtonLabel: '下载评论',
-                  onDownload: widget.onDownloadRequest,
-                )
-              : (_selectedSummaryId == null
-                  ? _CommentList(comments: _comments)
-                  : _SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId, orElse: () => _summaries.first))),
-        ),
-      ],
+          const SizedBox(height: 24),
+          Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _generating ? null : _generate,
+                icon: const Icon(Icons.auto_awesome),
+                label: Text(_generating ? '生成中...' : '生成 AI 总结'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            if (_summaries.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => setState(() => _selectedSummaryId = _summaries.first.id),
+                icon: const Icon(Icons.history),
+                tooltip: '历史总结',
+              ),
+            ],
+          ]),
+          const Spacer(),
+        ],
+      ),
     );
   }
 }
@@ -239,38 +348,6 @@ class _EmptyDataState extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _CommentList extends StatelessWidget {
-  final List<db.Comment> comments;
-  const _CommentList({required this.comments});
-
-  @override
-  Widget build(BuildContext context) {
-    if (comments.isEmpty) {
-      return const Center(child: Text('下载评论后, 这里会列出所有评论\n然后点 "生成 AI 总结"'));
-    }
-    return ListView.separated(
-      itemCount: comments.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        final c = comments[i];
-        return ListTile(
-          leading: CircleAvatar(
-            radius: 14,
-            child: Text(c.uname.isNotEmpty ? c.uname[0].toUpperCase() : '?',
-                style: const TextStyle(fontSize: 12)),
-          ),
-          title: Text(c.content, maxLines: 3, overflow: TextOverflow.ellipsis),
-          subtitle: Text(
-            '${c.uname} · 👍 ${c.likes}',
-            style: const TextStyle(fontSize: 11),
-          ),
-          isThreeLine: true,
-        );
-      },
     );
   }
 }
@@ -361,9 +438,11 @@ class DanmakuTab extends ConsumerStatefulWidget {
 
 class DanmakuTabState extends ConsumerState<DanmakuTab> {
   List<DanmakuData> _danmaku = [];
+  List<db.Summary> _summaries = [];
   bool _loading = true;
   bool _generating = false;
   String? _error;
+  String? _selectedSummaryId;
 
   @override
   void initState() {
@@ -381,6 +460,8 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
     try {
       final dbLocal = ref.read(databaseProvider);
       _danmaku = await dbLocal.getDanmakuForVideo(widget.bvid, page: _page);
+      _summaries = await dbLocal.getSummariesForVideo(widget.bvid)
+          .then((list) => list.where((s) => s.promptUsed.contains('danmaku')).toList());
     } catch (e) {
       _error = '$e';
     } finally {
@@ -404,6 +485,21 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       if (config.apiKey.isEmpty) {
         throw '请先在设置配置 API Key';
       }
+      // 弹模板选择器 (跟摘要 tab 一样的 UX)
+      final templates = ref.read(templatesProvider);
+      final templateId = await showTemplatePicker(
+        context,
+        title: '选弹幕模板',
+        templates: templates.comments, // 复用评论模板 (都是文本分析)
+        activeId: templates.activeCommentId,
+      );
+      if (templateId == null) {
+        setState(() => _generating = false);
+        return; // 用户取消
+      }
+      final tpl0 = templates.comments.firstWhere((t) => t.id == templateId,
+          orElse: () => templates.comments.first);
+      final tpl = tpl0.content;
       // 把弹幕按时间排序
       _danmaku.sort((a, b) => a.progress.compareTo(b.progress));
       // 简单拼接 (限制长度)
@@ -413,20 +509,13 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       final bili = ref.read(bilibiliClientProvider);
       final info = await bili.getVideoInfo(widget.bvid);
       final title = info['title'] as String? ?? widget.bvid;
-      final prompt = '''分析以下视频的弹幕, 输出结构化洞察:
-视频: $title
-弹幕 (${_danmaku.length} 条):
-${text.length > 6000 ? text.substring(0, 6000) + '...' : text}
-
-输出:
-### 🎯 高频观点
-(出现多次/被顶的观点)
-### 💬 笑点/吐槽点
-(被多人刷的有趣弹幕)
-### ⏰ 时间轴情感
-(按时间分布, 用户情绪变化)
-### 💡 总结
-(整体社区反应)''';
+      // 用模板渲染
+      final prompt = llm_tpl.PromptTemplate.render(tpl, {
+        'video_title': title,
+        'total': '${_danmaku.length}',
+        'taken': '${_danmaku.length}',
+        'text': text.length > 6000 ? '${text.substring(0, 6000)}...' : text,
+      });
       final client = ref.read(llmClientProvider);
       final result = await client.chat(
         systemPrompt: '你是视频弹幕分析专家。',
@@ -439,13 +528,14 @@ ${text.length > 6000 ? text.substring(0, 6000) + '...' : text}
         content: result,
         type: summary_model.SummaryType.structured,
         modelUsed: config.effectiveModel,
-        promptUsed: 'danmaku_insights',
+        promptUsed: 'danmaku_${tpl0.name}',
         page: _page,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✓ 弹幕总结已保存')),
       );
+      _load();  // 重新加载, 让用户能切换到历史总结
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -467,9 +557,43 @@ ${text.length > 6000 ? text.substring(0, 6000) + '...' : text}
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text('错误: $_error'));
 
-    return Column(
-      children: [
-        if (_danmaku.isNotEmpty)
+    // 有历史总结: 显示总结视图 + picker
+    if (_summaries.isNotEmpty && _selectedSummaryId != null) {
+      return Column(
+        children: [
+          _SummaryPicker(
+            summaries: _summaries,
+            selectedId: _selectedSummaryId,
+            onSelect: (s) => setState(() => _selectedSummaryId = s.id),
+            onDelete: (s) async {
+              await ref.read(videoRepositoryProvider).deleteSummary(s.id);
+              _load();
+            },
+          ),
+          Expanded(
+            child: _SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId)),
+          ),
+        ],
+      );
+    }
+
+    // 空状态: 还没下载弹幕
+    if (_danmaku.isEmpty) {
+      return _EmptyDataState(
+        icon: Icons.lightbulb_outline,
+        label: '请先下载弹幕',
+        downloadButtonLabel: '下载弹幕',
+        onDownload: widget.onDownloadRequest,
+      );
+    }
+
+    // 有弹幕但还没总结: 显示生成按钮 + 历史入口 (跟 Summary tab 一致)
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Spacer(),
           Container(
             padding: const EdgeInsets.all(8),
             color: Theme.of(context).colorScheme.primaryContainer,
@@ -488,42 +612,33 @@ ${text.length > 6000 ? text.substring(0, 6000) + '...' : text}
                   icon: const Icon(Icons.refresh, size: 18),
                   onPressed: widget.onDownloadRequest,
                 ),
-                FilledButton.icon(
-                  onPressed: _generating ? null : _generate,
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(_generating ? '生成中...' : '生成 AI 总结'),
-                ),
               ],
             ),
           ),
-        Expanded(
-          child: _danmaku.isEmpty
-              ? _EmptyDataState(
-                  icon: Icons.lightbulb_outline,
-                  label: '请先下载弹幕',
-                  downloadButtonLabel: '下载弹幕',
-                  onDownload: widget.onDownloadRequest,
-                )
-              : ListView.separated(
-                  itemCount: _danmaku.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final d = _danmaku[i];
-                    return ListTile(
-                                      leading: SizedBox(
-                      width: 56,
-                      child: Text(
-                        _fmtTime(d.progress),
-                        style: const TextStyle(fontSize: 10, color: Colors.grey, fontFamily: 'monospace'),
-                      ),
-                    ),
-                      title: Text(d.content, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                      dense: true,
-                                    );
-                                  },
-                                ),
-        ),
-      ],
+          const SizedBox(height: 24),
+          Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _generating ? null : _generate,
+                icon: const Icon(Icons.auto_awesome),
+                label: Text(_generating ? '生成中...' : '生成 AI 总结'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            if (_summaries.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => setState(() => _selectedSummaryId = _summaries.first.id),
+                icon: const Icon(Icons.history),
+                tooltip: '历史总结',
+              ),
+            ],
+          ]),
+          const Spacer(),
+        ],
+      ),
     );
   }
 }
