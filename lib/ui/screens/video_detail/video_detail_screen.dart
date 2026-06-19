@@ -492,17 +492,15 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
 
     _showLoading('拉取弹幕中...');
     try {
-      final dbLocal = ref.read(databaseProvider);
-      final videoRow = await (dbLocal.select(dbLocal.videos)
-            ..where((v) => v.bvid.equals(widget.bvid) & v.page.equals(page)))
-          .getSingleOrNull();
-      final cid = videoRow?.cid ?? 0;
+      // 直接从 B站 API 拿 cid (不再依赖本地 videos 表, 无需先下字幕)
+      final bili = ref.read(bilibiliClientProvider);
+      final cid = await bili.getCidForPage(widget.bvid, page: page);
       if (!mounted) return;
       Navigator.pop(context);
       if (cid == 0) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('cid 为 0, 请先下载字幕')),
+          const SnackBar(content: Text('cid 为 0, 请检查视频是否存在')),
         );
         return;
       }

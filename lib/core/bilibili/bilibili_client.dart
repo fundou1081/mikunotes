@@ -231,12 +231,36 @@ class BilibiliClient {
   }
 
   /// 获取视频信息
+  /// 如果 API 返回 code != 0, 抛出异常
   Future<Map<String, dynamic>> getVideoInfo(String bvid) async {
     final resp = await _dio.get(
       'https://api.bilibili.com/x/web-interface/view',
       queryParameters: {'bvid': bvid},
     );
-    return resp.data['data'] as Map<String, dynamic>;
+    final body = resp.data as Map<String, dynamic>?;
+    if (body == null) throw Exception('B站 API 返回空响应');
+    final code = (body['code'] as num?)?.toInt() ?? -1;
+    if (code != 0) {
+      final msg = body['message'] as String? ?? '未知错误';
+      throw Exception('B站 API 错误 $code: $msg');
+    }
+    return body['data'] as Map<String, dynamic>;
+  }
+
+  /// 获取指定分P 的 cid (用于下载弹幕/字幕)
+  /// page = 0 或 1 → 返回主分P cid
+  /// page > 1 → 返回对应分P cid (从 data.pages 列表取)
+  Future<int> getCidForPage(String bvid, {int page = 1}) async {
+    final info = await getVideoInfo(bvid);
+    if (page <= 1) {
+      return (info['cid'] as int?) ?? 0;
+    }
+    final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
+    if (page - 1 < pages.length) {
+      return (pages[page - 1]['cid'] as int?) ?? 0;
+    }
+    // 超出范围 fallback 到主 cid
+    return (info['cid'] as int?) ?? 0;
   }
 
   /// 解析 b23.tv 短链接，返回真实 B站 URL
