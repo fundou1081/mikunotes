@@ -23,15 +23,18 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
           summaries: builtInSummaryTemplates(),
           chats: builtInChatTemplates(),
           comments: builtInCommentTemplates(),
+          danmakus: builtInDanmakuTemplates(),
           activeSummaryId: 'builtin-summary-default',
           activeChatId: 'builtin-chat-default',
           activeCommentId: 'builtin-comment-community',
+          activeDanmakuId: 'builtin-danmaku-highfreq',
         );
         await _save();
       } else {
         state = PromptTemplateSet.fromJsonString(raw);
         final summaryIds = state.summaries.map((t) => t.id).toSet();
         final chatIds = state.chats.map((t) => t.id).toSet();
+        final danmakuIds = state.danmakus.map((t) => t.id).toSet();
         final commentIds = state.comments.map((t) => t.id).toSet();
         final missingSummary = builtInSummaryTemplates()
             .where((b) => !summaryIds.contains(b.id)).toList();
@@ -39,16 +42,21 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
             .where((b) => !chatIds.contains(b.id)).toList();
         final missingComments = builtInCommentTemplates()
             .where((b) => !commentIds.contains(b.id)).toList();
+        final missingDanmaku = builtInDanmakuTemplates()
+            .where((b) => !danmakuIds.contains(b.id)).toList();
         if (missingSummary.isNotEmpty ||
             missingChat.isNotEmpty ||
-            missingComments.isNotEmpty) {
+            missingComments.isNotEmpty ||
+            missingDanmaku.isNotEmpty) {
           state = PromptTemplateSet(
             summaries: [...state.summaries, ...missingSummary],
             chats: [...state.chats, ...missingChat],
             comments: [...state.comments, ...missingComments],
+            danmakus: [...state.danmakus, ...missingDanmaku],
             activeSummaryId: state.activeSummaryId ?? 'builtin-summary-default',
             activeChatId: state.activeChatId ?? 'builtin-chat-default',
             activeCommentId: state.activeCommentId ?? 'builtin-comment-community',
+            activeDanmakuId: state.activeDanmakuId ?? 'builtin-danmaku-highfreq',
           );
           await _save();
         }
@@ -58,9 +66,11 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
         summaries: builtInSummaryTemplates(),
         chats: builtInChatTemplates(),
         comments: builtInCommentTemplates(),
+        danmakus: builtInDanmakuTemplates(),
         activeSummaryId: 'builtin-summary-default',
         activeChatId: 'builtin-chat-default',
         activeCommentId: 'builtin-comment-community',
+        activeDanmakuId: 'builtin-danmaku-highfreq',
       );
     }
   }

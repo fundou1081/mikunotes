@@ -11,7 +11,7 @@ import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:mikunotes/core/storage/database.dart' show Comment, DanmakuData;
-import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart' show DataSource;
+import 'package:mikunotes/ui/screens/video_detail/widgets/shared_data.dart' show DataSource;
 import 'package:uuid/uuid.dart';
 import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
 

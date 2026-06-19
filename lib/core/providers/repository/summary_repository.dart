@@ -1,6 +1,5 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart';

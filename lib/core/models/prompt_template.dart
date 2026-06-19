@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:mikunotes/core/llm/prompt_template.dart';
 
-enum TemplateType { summary, chat, comment }
+enum TemplateType { summary, chat, comment, danmaku }
 
 /// 用户保存的 prompt 模板
 class PromptTemplate {
@@ -122,22 +122,47 @@ List<PromptTemplate> builtInCommentTemplates() => [
       ),
     ];
 
+List<PromptTemplate> builtInDanmakuTemplates() => [
+      const PromptTemplate(
+        id: 'builtin-danmaku-highfreq',
+        name: '高频观点',
+        content: danmakuHighFreqTemplate,
+        isBuiltIn: true,
+      ),
+      const PromptTemplate(
+        id: 'builtin-danmaku-timeline',
+        name: '时间轴情感',
+        content: danmakuTimelineTemplate,
+        isBuiltIn: true,
+      ),
+      const PromptTemplate(
+        id: 'builtin-danmaku-humor',
+        name: '弹幕萃取',
+        content: danmakuHumorTemplate,
+        isBuiltIn: true,
+      ),
+    ];
+
 /// 模板集合状态
 class PromptTemplateSet {
   final List<PromptTemplate> summaries;
   final List<PromptTemplate> chats;
   final List<PromptTemplate> comments;
+  final List<PromptTemplate> danmakus;
   final String? activeSummaryId;
   final String? activeChatId;
   final String? activeCommentId;
+  final String? activeDanmakuId;
 
   const PromptTemplateSet({
     this.summaries = const [],
     this.chats = const [],
     this.comments = const [],
+    this.danmakus = const [],
     this.activeSummaryId,
     this.activeChatId,
     this.activeCommentId,
+    this.activeDanmakuId,
   });
 
   PromptTemplate? get activeSummary {
@@ -164,30 +189,44 @@ class PromptTemplateSet {
     return null;
   }
 
+  PromptTemplate? get activeDanmaku {
+    if (activeDanmakuId == null) return null;
+    for (final t in danmakus) {
+      if (t.id == activeDanmakuId) return t;
+    }
+    return null;
+  }
+
   PromptTemplateSet copyWith({
     List<PromptTemplate>? summaries,
     List<PromptTemplate>? chats,
     List<PromptTemplate>? comments,
+    List<PromptTemplate>? danmakus,
     String? activeSummaryId,
     String? activeChatId,
     String? activeCommentId,
+    String? activeDanmakuId,
   }) =>
       PromptTemplateSet(
         summaries: summaries ?? this.summaries,
         chats: chats ?? this.chats,
         comments: comments ?? this.comments,
+        danmakus: danmakus ?? this.danmakus,
         activeSummaryId: activeSummaryId ?? this.activeSummaryId,
         activeChatId: activeChatId ?? this.activeChatId,
         activeCommentId: activeCommentId ?? this.activeCommentId,
+        activeDanmakuId: activeDanmakuId ?? this.activeDanmakuId,
       );
 
   Map<String, dynamic> toJson() => {
         'summaries': summaries.map((t) => t.toJson()).toList(),
         'chats': chats.map((t) => t.toJson()).toList(),
         'comments': comments.map((t) => t.toJson()).toList(),
+        'danmakus': danmakus.map((t) => t.toJson()).toList(),
         'activeSummaryId': activeSummaryId,
         'activeChatId': activeChatId,
         'activeCommentId': activeCommentId,
+        'activeDanmakuId': activeDanmakuId,
       };
 
   factory PromptTemplateSet.fromJson(Map<String, dynamic> j) =>

@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/background/foreground_service_manager.dart';
-import 'package:mikunotes/core/llm/llm_client.dart';
+// import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/models/prompt_template.dart';

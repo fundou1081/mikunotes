@@ -11,13 +11,9 @@ import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/models/video.dart' as video_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/storage/database.dart' hide Video;
-import 'package:mikunotes/core/subtitle/subtitle_parser.dart';
-import 'package:uuid/uuid.dart';
 import 'package:mikunotes/core/providers/repository/subtitle_repository.dart';
 import 'package:mikunotes/core/providers/repository/summary_repository.dart';
 import 'package:mikunotes/core/providers/repository/chat_repository.dart';
-
-const _uuid = Uuid();
 
 /// 视频仓库 — 整合 B站 API、字幕下载、数据库存储
 class VideoRepository {
@@ -227,14 +223,11 @@ class VideoRepository {
           // 从 B 站拉元信息
           final info = await _bili.getVideoInfo(bvid);
           final aid = (info['aid'] as num?)?.toInt() ?? 0;
-          final title = info['title'] as String? ?? bvid;
-          final cover = info['pic'] as String? ?? '';
           final uploader = (info['owner'] as Map?)?['name'] as String? ?? '';
           upMid = (info['owner'] as Map?)?['mid'] as int? ?? 0;
           upName = uploader;
           upFace = (info['owner'] as Map?)?['face'] as String? ?? '';
           final duration = (info['duration'] as num?)?.toInt() ?? 0;
-          final pages = (info['pages'] as List?)?.cast<Map>() ?? [];
           await _db.upsertVideo(VideosCompanion.insert(
             bvid: bvid,
             page: 1,

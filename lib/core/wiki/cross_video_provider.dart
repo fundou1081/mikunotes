@@ -1,9 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/llm/llm_client.dart';
 import 'package:mikunotes/core/models/ai_config.dart';
 import 'package:mikunotes/core/providers/providers.dart' show llmClientProvider, aiConfigProvider, databaseProvider;
 import 'package:mikunotes/core/wiki/insight_storage.dart';
-import 'package:mikunotes/core/wiki/wiki_generator.dart';
 import 'package:mikunotes/core/storage/database.dart';
 
 /// 跨视频洞察生成状态

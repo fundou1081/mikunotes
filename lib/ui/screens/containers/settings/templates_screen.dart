@@ -20,7 +20,7 @@ class TemplatesScreenState extends ConsumerState<TemplatesScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -50,6 +50,7 @@ class TemplatesScreenState extends ConsumerState<TemplatesScreen>
                 TemplateList(type: TemplateType.summary),
                 TemplateList(type: TemplateType.chat),
                 TemplateList(type: TemplateType.comment),
+                TemplateList(type: TemplateType.danmaku),
               ],
             ),
           ),

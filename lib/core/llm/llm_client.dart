@@ -144,7 +144,6 @@ class LLMClient {
     final stream = response.data.stream as Stream<dynamic>;
     String buffer = '';
     bool sseFormatDetected = false;
-    int sseLineCount = 0;
     // 用于过滤 <think>...</think> 跨 chunk 的状态机
     final thinkFilter = _ThinkStripper();
 
@@ -165,8 +164,7 @@ class LLMClient {
           // 等 stream 结束后再处理
           break;
         }
-        sseLineCount++;
-        final data = line.substring(5).trim();
+            final data = line.substring(5).trim();
         if (data == '[DONE]') {
           sseFormatDetected = true;
           return;

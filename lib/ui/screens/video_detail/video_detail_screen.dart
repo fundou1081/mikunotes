@@ -17,7 +17,7 @@ import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/bilibili/danmaku_client.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
 import 'package:mikunotes/ui/screens/video_detail/page_list_page.dart';
-import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart' show RawDataTab, CommentTab, DanmakuTab, DataSource;
+import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart';
 import 'package:mikunotes/core/storage/database.dart' show DanmakuData, Comment;
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:mikunotes/core/storage/database.dart' show CommentsCompanion, DanmakuCompanion;

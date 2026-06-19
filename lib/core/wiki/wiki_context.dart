@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mikunotes/core/wiki/wiki_storage.dart';
-import 'package:mikunotes/core/wiki/wiki_generator.dart';
 import 'package:mikunotes/core/storage/database.dart';
 import 'package:mikunotes/core/providers/providers.dart' show databaseProvider;
 
