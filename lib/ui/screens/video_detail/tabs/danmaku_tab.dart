@@ -1,16 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/llm/llm_client.dart';
-import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
-import 'package:mikunotes/core/models/ai_config.dart';
-import 'package:mikunotes/core/models/prompt_template.dart';
-import 'package:mikunotes/core/models/summary.dart' as summary_model;
 import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
-import 'package:mikunotes/core/storage/database.dart' as db;
-import 'package:mikunotes/core/storage/database.dart' show DanmakuData;
-import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
+import 'package:mikunotes/core/storage/database.dart' show DanmakuData, Summary;
 import 'package:mikunotes/ui/screens/video_detail/widgets/shared_data.dart';
 
 class DanmakuTab extends ConsumerStatefulWidget {
@@ -31,9 +24,8 @@ class DanmakuTab extends ConsumerStatefulWidget {
 
 class DanmakuTabState extends ConsumerState<DanmakuTab> {
   List<DanmakuData> _danmaku = [];
-  List<db.Summary> _summaries = [];
+  List<Summary> _summaries = [];
   bool _loading = true;
-  bool _generating = false;
   String? _error;
   String? _selectedSummaryId;
 
@@ -75,71 +67,25 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       );
       return;
     }
-    setState(() {
-      _generating = true;
-      _error = null;
-    });
-    try {
-      final config = ref.read(aiConfigProvider);
-      if (config.apiKey.isEmpty) {
-        throw '请先在设置配置 API Key';
-      }
-      // 弹模板选择器 (跟摘要 tab 一样的 UX)
-      final templates = ref.read(templatesProvider);
-      final templateId = await showTemplatePicker(
-        context,
-        title: '选弹幕模板',
-        templates: templates.danmakus,
-        activeId: templates.activeDanmakuId,
-      );
-      if (templateId == null) {
-        setState(() => _generating = false);
-        return; // 用户取消
-      }
-      final tpl0 = templates.danmakus.firstWhere((t) => t.id == templateId,
-          orElse: () => templates.danmakus.first);
-      final tpl = tpl0.content;
-      // 把弹幕按时间排序
-      _danmaku.sort((a, b) => a.progress.compareTo(b.progress));
-      // 简单拼接 (限制长度)
-      final text = _danmaku
-          .map((d) => '[${_fmtTime(d.progress)}] ${d.content}')
-          .join('\n');
-      final bili = ref.read(bilibiliClientProvider);
-      final info = await bili.getVideoInfo(widget.bvid);
-      final title = info['title'] as String? ?? widget.bvid;
-      // 用模板渲染
-      final prompt = llm_tpl.PromptTemplate.render(tpl, {
-        'video_title': title,
-        'total': '${_danmaku.length}',
-        'taken': '${_danmaku.length}',
-        'text': text.length > 6000 ? '${text.substring(0, 6000)}...' : text,
-      });
-      final client = ref.read(llmClientProvider);
-      final result = await client.chat(
-        systemPrompt: '你是视频弹幕分析专家。',
-        userMessage: prompt,
-        maxTokens: 2000,
-        disableReasoning: true,
-      );
-      await ref.read(videoRepositoryProvider).createSummary(
-        bvid: widget.bvid,
-        content: result,
-        type: summary_model.SummaryType.structured,
-        modelUsed: config.effectiveModel,
-        promptUsed: 'danmaku_${tpl0.name}',
-        page: _page,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✓ 弹幕总结已保存')),
-      );
-      _load();  // 重新加载, 让用户能切换到历史总结
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _generating = false);
-    }
+    final templates = ref.read(templatesProvider);
+    // 弹模板选择器 (跟摘要 tab 一样的 UX)
+    final templateId = await showTemplatePicker(
+      context,
+      title: '选弹幕模板',
+      templates: templates.danmakus,
+      activeId: templates.activeDanmakuId,
+    );
+    if (templateId == null) return; // 用户取消
+
+    // ⭐ 调用流式生成 (跟摘要 tab 一样, 实时显示)
+    await ref.read(generationProvider.notifier).startDanmakuGeneration(
+      bvid: widget.bvid,
+      danmaku: _danmaku,
+      templateId: templateId,
+      page: _page,
+    );
+    // 完成后刷新列表
+    if (mounted) _load();
   }
 
   String _fmtTime(int ms) {
@@ -156,8 +102,10 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text('错误: $_error'));
 
+    final genState = ref.watch(generationProvider)[widget.bvid];
+
     // 有历史总结: 显示总结视图 + picker
-    if (_summaries.isNotEmpty && _selectedSummaryId != null) {
+    if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
       return Column(
         children: [
           SummaryPicker(
@@ -173,6 +121,71 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
             child: SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId)),
           ),
         ],
+      );
+    }
+
+    // ⭐ 正在生成 (或刚完成, 避免闪屏)
+    if (genState != null && genState.source == GenerationSource.danmaku && (genState.isRunning || genState.isCompleted)) {
+      return Column(
+        children: [
+          const LinearProgressIndicator(),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(children: [
+              const Icon(Icons.auto_awesome, size: 18),
+              const SizedBox(width: 8),
+              Text('${genState.content.length} 字 · ${genState.isCompleted ? "已完成" : "AI 思考中..."}',
+                  style: Theme.of(context).textTheme.labelMedium),
+              const Spacer(),
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  if (genState.isCompleted) {
+                    ref.read(generationProvider.notifier).clear(widget.bvid);
+                    if (mounted) setState(() {});
+                  } else {
+                    ref.read(generationProvider.notifier).cancel(widget.bvid);
+                  }
+                },
+                icon: Icon(genState.isCompleted ? Icons.check : Icons.stop, size: 18),
+                label: Text(genState.isCompleted ? '查看总结' : '停止'),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(
+                genState.content.isEmpty ? '(AI 思考中…)' : genState.content,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 生成失败
+    if (genState != null && genState.source == GenerationSource.danmaku && genState.error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: 16),
+              Text('生成失败', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(genState.error ?? '', style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -218,9 +231,9 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
           Row(children: [
             Expanded(
               child: FilledButton.icon(
-                onPressed: _generating ? null : _generate,
+                onPressed: genState?.isRunning == true ? null : _generate,
                 icon: const Icon(Icons.auto_awesome),
-                label: Text(_generating ? '生成中...' : '生成 AI 总结'),
+                label: Text(genState?.isRunning == true ? '生成中...' : '生成 AI 总结'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
@@ -240,7 +253,6 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────
+}
 // 原始数据 Tab — chip 多选 (字幕/评论/弹幕)
