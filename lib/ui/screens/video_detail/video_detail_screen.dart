@@ -1956,8 +1956,8 @@ class _DownloadDanmakuSheetState extends State<_DownloadDanmakuSheet> {
                     children: [
                         const Text('下载弹幕', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
-                        const Text('B 站弹幕手动下载, 按 (bvid, page) 分P 存\n⚠️ v0.7.1 占位, 真实下载 v0.7.2 上线',
-                            style: TextStyle(fontSize: 12, color: Colors.orange)),
+                        const Text('B 站弹幕手动下载, 按 (bvid, page) 分P 存\n格式: <d p="time,type,...">内容</d>',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 16),
                         const Text('下载数量', style: TextStyle(fontWeight: FontWeight.bold)),
                         Slider(

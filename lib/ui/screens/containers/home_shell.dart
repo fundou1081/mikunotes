@@ -50,7 +50,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   static const _insightPages = [
     WikiViewer(),           // 📚 浏览 Wiki
     WikiChat(),             // 💬 对话洞察
-    GraphVisualization(),   // 📊 图可视化 (待开发)
+    GraphVisualization(),   // 📊 图可视化 (Fruchterman-Reingold)
   ];
 
   void _switchMode() {
