@@ -70,6 +70,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
   String? _selectedLang;
   bool _loadingSubtitle = true;
   int _subtitleTabKey = 0; // 用于强制重建 db.Subtitle Tab
+  int _dataTabKey = 0; // 用于强制重建 Comment/Danmaku Tab (下载后)
   int _pageCount = 1;
   int _selectedPage = 1; // 0 = 整体, 1+ = 第N部分
 
@@ -108,7 +109,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text('视频 ${widget.bvid}', maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -199,11 +200,11 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             Expanded(
             child: TabBarView(children: [
           _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll, selectedPage: _selectedPage, pageCount: _pageCount),
-          CommentTab(bvid: widget.bvid, selectedPage: _selectedPage),
-          DanmakuTab(bvid: widget.bvid, selectedPage: _selectedPage),
-          _ChatTab(bvid: widget.bvid, subtitle: _subtitle, selectedPage: _selectedPage),
+          CommentTab(key: ValueKey('comment_$_dataTabKey'), bvid: widget.bvid, selectedPage: _selectedPage, onDownloadRequest: _showDownloadCommentsSheet),
+          DanmakuTab(key: ValueKey('danmaku_$_dataTabKey'), bvid: widget.bvid, selectedPage: _selectedPage, onDownloadRequest: _showDownloadDanmakuSheet),
+          _ChatTab(key: ValueKey('chat_$_dataTabKey'), bvid: widget.bvid, subtitle: _subtitle, selectedPage: _selectedPage),
           RawDataTab(
-            key: ValueKey(_subtitleTabKey),
+            key: ValueKey('raw_$_subtitleTabKey'),
             bvid: widget.bvid,
             subtitle: _subtitle,
             allSubtitles: _allSubtitles,
@@ -402,7 +403,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       // 过滤
       var comments = fetched.comments;
       if (result.filterShort) {
-        comments = comments.where((c) => c.content.length >= 2).toList();
+        comments = comments.where((c) => c.content.length >= result.minLength).toList();
       }
       if (result.filterDigits) {
         comments = comments.where((c) {
@@ -450,7 +451,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('✓ 评论已保存: ${comments.length} 条 (page=$page)')),
       );
-      setState(() {}); // 刷新 UI
+      setState(() => _dataTabKey++); // 强制重建 CommentTab
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
@@ -523,7 +524,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       // 过滤
       var danmaku = fetched.danmaku;
       if (result.filterShort) {
-        danmaku = danmaku.where((d) => d.content.length >= 2).toList();
+        danmaku = danmaku.where((d) => d.content.length >= result.minLength).toList();
       }
       if (result.filterDigits) {
         danmaku = danmaku.where((d) {
@@ -557,7 +558,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('✓ 弹幕已保存: \${danmaku.length} 条')),
       );
-      setState(() {}); // 刷新 UI
+      setState(() => _dataTabKey++); // 强制重建 DanmakuTab
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
@@ -1139,7 +1140,7 @@ class _ChatTab extends ConsumerStatefulWidget {
   final String bvid;
   final VideoSubtitle? subtitle;
   final int selectedPage;
-  const _ChatTab({required this.bvid, required this.subtitle, this.selectedPage = 1});
+  const _ChatTab({super.key, required this.bvid, required this.subtitle, this.selectedPage = 1});
 
   @override
   ConsumerState<_ChatTab> createState() => _ChatTabState();
@@ -1181,7 +1182,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   @override
   void didUpdateWidget(covariant _ChatTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 分P 切换时: 重新计算 tokens (字幕长度变了)
+    // 分P 切换时: 重新计算 tokens + 重新加载评论/弹幕数据
     if (oldWidget.subtitle != widget.subtitle) {
       final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
       setState(() {
@@ -1189,6 +1190,9 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           '${widget.subtitle?.fullText ?? ''}$msgsTotal',
         );
       });
+    }
+    if (oldWidget.selectedPage != widget.selectedPage) {
+      _loadSources();
     }
   }
 
@@ -1476,12 +1480,19 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
             children: [
               const Text('数据源:', style: TextStyle(fontSize: 11)),
               const SizedBox(width: 4),
-              ...DataSource.values.map((s) => Padding(
+              ...DataSource.values.map((s) {
+                // 判断是否可点: subtitle 由 widget.subtitle 决定; comment/danmaku 由列表长度决定
+                final available = switch (s) {
+                  DataSource.subtitle => widget.subtitle != null,
+                  DataSource.comment => _comments.isNotEmpty,
+                  DataSource.danmaku => _danmaku.isNotEmpty,
+                };
+                return Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: FilterChip(
                   label: Text(s.label, style: const TextStyle(fontSize: 10)),
                   selected: _chatSources.contains(s),
-                  onSelected: (sel) {
+                  onSelected: available ? (sel) {
                     setState(() {
                       if (sel) {
                         _chatSources.add(s);
@@ -1489,10 +1500,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                         _chatSources.remove(s);
                       }
                     });
-                  },
+                  } : null,
                   visualDensity: VisualDensity.compact,
+                  tooltip: available ? null : '${s.label} 未下载',
+                  backgroundColor: available ? null : Colors.grey.shade200,
                 ),
-              )),
+              );}),
             ],
           ),
         ),
@@ -1800,6 +1813,7 @@ class _ChatBubble extends StatelessWidget {
 class _CommentDownloadConfig {
     final String mode;     // 'first' | 'random'
     final int maxCount;
+    final int minLength;   // 短内容阈值 (字符数)
     final bool filterShort;
     final bool filterDigits;
     final bool filterDuplicate;
@@ -1807,6 +1821,7 @@ class _CommentDownloadConfig {
     const _CommentDownloadConfig({
         required this.mode,
         required this.maxCount,
+        this.minLength = 2,
         this.filterShort = false,
         this.filterDigits = false,
         this.filterDuplicate = false,
@@ -1823,6 +1838,7 @@ class _DownloadCommentsSheet extends StatefulWidget {
 class _DownloadCommentsSheetState extends State<_DownloadCommentsSheet> {
     String _mode = 'first';
     int _maxCount = 100;
+    int _minLength = 2;
     bool _filterShort = false;
     bool _filterDigits = true;
     bool _filterDuplicate = true;
@@ -1866,7 +1882,13 @@ class _DownloadCommentsSheetState extends State<_DownloadCommentsSheet> {
                         CheckboxListTile(
                             value: _filterShort,
                             onChanged: (v) => setState(() => _filterShort = v ?? false),
-                            title: const Text('过滤短内容 (< 2 字)'),
+                            title: const Text('过滤短内容'),
+                            subtitle: Slider(
+                                value: _minLength.toDouble(),
+                                min: 1, max: 10, divisions: 9,
+                                label: '< $_minLength 字',
+                                onChanged: _filterShort ? (v) => setState(() => _minLength = v.round()) : null,
+                            ),
                             dense: true,
                         ),
                         CheckboxListTile(
@@ -1898,6 +1920,7 @@ class _DownloadCommentsSheetState extends State<_DownloadCommentsSheet> {
                                                 _CommentDownloadConfig(
                                                     mode: _mode,
                                                     maxCount: _maxCount,
+                                                    minLength: _minLength,
                                                     filterShort: _filterShort,
                                                     filterDigits: _filterDigits,
                                                     filterDuplicate: _filterDuplicate,
@@ -1920,12 +1943,14 @@ class _DownloadCommentsSheetState extends State<_DownloadCommentsSheet> {
 
 class _DanmakuDownloadConfig {
     final int maxCount;
+    final int minLength;   // 短内容阈值
     final bool filterShort;
     final bool filterDigits;
     final bool filterDuplicate;
 
     const _DanmakuDownloadConfig({
         required this.maxCount,
+        this.minLength = 2,
         this.filterShort = false,
         this.filterDigits = false,
         this.filterDuplicate = false,
@@ -1941,6 +1966,7 @@ class _DownloadDanmakuSheet extends StatefulWidget {
 
 class _DownloadDanmakuSheetState extends State<_DownloadDanmakuSheet> {
     int _maxCount = 200;
+    int _minLength = 2;
     bool _filterShort = false;
     bool _filterDigits = true;
     bool _filterDuplicate = true;
@@ -1972,7 +1998,13 @@ class _DownloadDanmakuSheetState extends State<_DownloadDanmakuSheet> {
                         CheckboxListTile(
                             value: _filterShort,
                             onChanged: (v) => setState(() => _filterShort = v ?? false),
-                            title: const Text('过滤短内容 (< 2 字)'),
+                            title: const Text('过滤短内容'),
+                            subtitle: Slider(
+                                value: _minLength.toDouble(),
+                                min: 1, max: 10, divisions: 9,
+                                label: '< $_minLength 字',
+                                onChanged: _filterShort ? (v) => setState(() => _minLength = v.round()) : null,
+                            ),
                             dense: true,
                         ),
                         CheckboxListTile(
@@ -2003,6 +2035,7 @@ class _DownloadDanmakuSheetState extends State<_DownloadDanmakuSheet> {
                                             Navigator.pop(context,
                                                 _DanmakuDownloadConfig(
                                                     maxCount: _maxCount,
+                                                    minLength: _minLength,
                                                     filterShort: _filterShort,
                                                     filterDigits: _filterDigits,
                                                     filterDuplicate: _filterDuplicate,

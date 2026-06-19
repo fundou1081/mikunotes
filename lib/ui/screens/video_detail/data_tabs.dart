@@ -35,8 +35,14 @@ enum DataSource {
 class CommentTab extends ConsumerStatefulWidget {
   final String bvid;
   final int selectedPage;
+  final VoidCallback? onDownloadRequest;
 
-  const CommentTab({required this.bvid, this.selectedPage = 1});
+  const CommentTab({
+    super.key,
+    required this.bvid,
+    this.selectedPage = 1,
+    this.onDownloadRequest,
+  });
 
   @override
   ConsumerState<CommentTab> createState() => CommentTabState();
@@ -80,7 +86,7 @@ class CommentTabState extends ConsumerState<CommentTab> {
   Future<void> _generate() async {
     if (_comments.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在 AppBar 菜单下载评论')),
+        const SnackBar(content: Text('请先点击上方「下载评论」')),
       );
       return;
     }
@@ -143,28 +149,33 @@ class CommentTabState extends ConsumerState<CommentTab> {
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Row(
-            children: [
-              Icon(Icons.comment, color: Theme.of(context).colorScheme.onPrimaryContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _comments.isEmpty ? '暂无评论' : '共 ${_comments.length} 条评论',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+        if (_comments.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Row(
+              children: [
+                Icon(Icons.comment, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '共 ${_comments.length} 条评论',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  ),
                 ),
-              ),
-              if (_comments.isNotEmpty)
+                IconButton(
+                  tooltip: '重新下载评论',
+                  icon: const Icon(Icons.refresh, size: 18),
+                  onPressed: widget.onDownloadRequest,
+                ),
                 FilledButton.icon(
                   onPressed: _generating ? null : _generate,
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: Text(_generating ? '生成中...' : '生成 AI 总结'),
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
         if (_summaries.isNotEmpty)
           _SummaryPicker(
             summaries: _summaries,
@@ -176,11 +187,58 @@ class CommentTabState extends ConsumerState<CommentTab> {
             },
           ),
         Expanded(
-          child: _selectedSummaryId == null
-              ? _CommentList(comments: _comments)
-              : _SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId, orElse: () => _summaries.first)),
+          child: _comments.isEmpty
+              ? _EmptyDataState(
+                  icon: Icons.comment_outlined,
+                  label: '请先下载评论',
+                  downloadButtonLabel: '下载评论',
+                  onDownload: widget.onDownloadRequest,
+                )
+              : (_selectedSummaryId == null
+                  ? _CommentList(comments: _comments)
+                  : _SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId, orElse: () => _summaries.first))),
         ),
       ],
+    );
+  }
+}
+
+/// 统一空状态 — 跟 Summary tab 的 _noSubtitleState 风格一致
+class _EmptyDataState extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onDownload;
+  final String? downloadButtonLabel;
+
+  const _EmptyDataState({
+    required this.icon,
+    required this.label,
+    this.onDownload,
+    this.downloadButtonLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(label, style: const TextStyle(fontSize: 14)),
+            if (onDownload != null) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onDownload,
+                icon: const Icon(Icons.download),
+                label: Text(downloadButtonLabel ?? '下载'),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -288,8 +346,14 @@ class _SummaryPicker extends StatelessWidget {
 class DanmakuTab extends ConsumerStatefulWidget {
   final String bvid;
   final int selectedPage;
+  final VoidCallback? onDownloadRequest;
 
-  const DanmakuTab({required this.bvid, this.selectedPage = 1});
+  const DanmakuTab({
+    super.key,
+    required this.bvid,
+    this.selectedPage = 1,
+    this.onDownloadRequest,
+  });
 
   @override
   ConsumerState<DanmakuTab> createState() => DanmakuTabState();
@@ -327,7 +391,7 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
   Future<void> _generate() async {
     if (_danmaku.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在 AppBar 菜单下载弹幕')),
+        const SnackBar(content: Text('请先点击上方「下载弹幕」')),
       );
       return;
     }
@@ -405,31 +469,41 @@ ${text.length > 6000 ? text.substring(0, 6000) + '...' : text}
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Row(
-            children: [
-              Icon(Icons.lightbulb_outline, color: Theme.of(context).colorScheme.onPrimaryContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _danmaku.isEmpty ? '暂无弹幕' : '共 ${_danmaku.length} 条弹幕',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+        if (_danmaku.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Row(
+              children: [
+                Icon(Icons.lightbulb_outline, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '共 ${_danmaku.length} 条弹幕',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  ),
                 ),
-              ),
-              if (_danmaku.isNotEmpty)
+                IconButton(
+                  tooltip: '重新下载弹幕',
+                  icon: const Icon(Icons.refresh, size: 18),
+                  onPressed: widget.onDownloadRequest,
+                ),
                 FilledButton.icon(
                   onPressed: _generating ? null : _generate,
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: Text(_generating ? '生成中...' : '生成 AI 总结'),
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
         Expanded(
           child: _danmaku.isEmpty
-              ? const Center(child: Text('下载弹幕后, 这里会列出所有弹幕\n(按时间排序)\n然后点 "生成 AI 总结"'))
+              ? _EmptyDataState(
+                  icon: Icons.lightbulb_outline,
+                  label: '请先下载弹幕',
+                  downloadButtonLabel: '下载弹幕',
+                  onDownload: widget.onDownloadRequest,
+                )
               : ListView.separated(
                   itemCount: _danmaku.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
@@ -618,10 +692,17 @@ class RawDataTabState extends ConsumerState<RawDataTab> {
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 4,
-                  children: DataSource.values.map((s) => FilterChip(
+                  children: DataSource.values.map((s) {
+                    // 判断是否可点
+                    final available = switch (s) {
+                      DataSource.subtitle => widget.allSubtitles.isNotEmpty,
+                      DataSource.comment => _comments.isNotEmpty,
+                      DataSource.danmaku => _danmaku.isNotEmpty,
+                    };
+                    return FilterChip(
                     label: Text(s.label, style: const TextStyle(fontSize: 12)),
                     selected: _selectedSources.contains(s),
-                    onSelected: (sel) {
+                    onSelected: available ? (sel) {
                       setState(() {
                         if (sel) {
                           _selectedSources.add(s);
@@ -629,8 +710,11 @@ class RawDataTabState extends ConsumerState<RawDataTab> {
                           _selectedSources.remove(s);
                         }
                       });
-                    },
-                  )).toList(),
+                    } : null,
+                    backgroundColor: available ? null : Colors.grey.shade200,
+                    tooltip: available ? null : '${s.label} 未下载',
+                  );
+                  }).toList(),
                 ),
               ),
             ],
