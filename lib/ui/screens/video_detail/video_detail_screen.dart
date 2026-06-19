@@ -17,6 +17,7 @@ import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/bilibili/danmaku_client.dart';
 import 'package:mikunotes/core/bilibili/comment_client.dart';
 import 'package:mikunotes/ui/screens/video_detail/page_list_page.dart';
+import 'package:mikunotes/ui/screens/video_detail/data_tabs.dart';
 import 'package:mikunotes/core/storage/database.dart' as db;
 import 'package:mikunotes/core/storage/database.dart' show CommentsCompanion, DanmakuCompanion;
 import 'package:drift/drift.dart' as drift;
@@ -155,10 +156,12 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
               ],
             ),
           ],
-          bottom: const TabBar(tabs: [
+          bottom: const TabBar(isScrollable: true, tabs: [
             Tab(text: '摘要', icon: Icon(Icons.summarize)),
+            Tab(text: '评论', icon: Icon(Icons.comment)),
+            Tab(text: '弹幕', icon: Icon(Icons.lightbulb_outline)),
             Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline)),
-            Tab(text: '字幕', icon: Icon(Icons.subtitles)),
+            Tab(text: '原始数据', icon: Icon(Icons.subtitles)),
           ]),
         ),
         body: Column(
@@ -195,10 +198,13 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
             Expanded(
             child: TabBarView(children: [
           _SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll, selectedPage: _selectedPage, pageCount: _pageCount),
+          CommentTab(bvid: widget.bvid, selectedPage: _selectedPage),
+          DanmakuTab(bvid: widget.bvid, selectedPage: _selectedPage),
           _ChatTab(bvid: widget.bvid, subtitle: _subtitle, selectedPage: _selectedPage),
-          _SubtitleTab(
+          RawDataTab(
             key: ValueKey(_subtitleTabKey),
             bvid: widget.bvid,
+            subtitle: _subtitle,
             allSubtitles: _allSubtitles,
             selectedLang: _selectedLang,
             selectedPage: _selectedPage,
@@ -209,6 +215,10 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
                 _subtitleTabKey++;
               });
               _loadSubtitleForLang(lang);
+            },
+            onRefresh: () {
+                _loadSubtitleForLang(_selectedLang ?? 'zh');
+                _subtitleTabKey++;
             },
           ),
         ]),
@@ -1685,229 +1695,6 @@ class _ChatBubble extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ─── 字幕 Tab ──────────────────────────────────────────────────
-
-class _SubtitleTab extends ConsumerStatefulWidget {
-  final String bvid;
-  final List<db.Subtitle> allSubtitles;
-  final String? selectedLang;
-  final bool loading;
-  final ValueChanged<String> onLanguageChanged;
-  final int selectedPage;
-  const _SubtitleTab({
-    super.key,
-    required this.bvid,
-    required this.allSubtitles,
-    required this.selectedLang,
-    required this.loading,
-    required this.onLanguageChanged,
-    this.selectedPage = 1,
-  });
-
-  @override
-  ConsumerState<_SubtitleTab> createState() => _SubtitleTabState();
-}
-
-class _SubtitleTabState extends ConsumerState<_SubtitleTab> {
-  VideoSubtitle? _subtitle;
-  bool _loading = true;
-  String _searchQuery = '';
-  final _searchController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _loading = true;
-    _loadSubtitle();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SubtitleTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedLang != widget.selectedLang ||
-        oldWidget.selectedPage != widget.selectedPage) {
-      _loadSubtitle();
-    }
-  }
-
-  Future<void> _loadSubtitle() async {
-    setState(() => _loading = true);
-    final repo = ref.read(videoRepositoryProvider);
-    final page = widget.selectedPage == 0 ? null : widget.selectedPage;
-    final sub = await repo.getSubtitle(
-      widget.bvid,
-      language: widget.selectedLang,
-      page: page,
-    );
-    if (mounted) setState(() {
-      _subtitle = sub;
-      _loading = false;
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.allSubtitles.isEmpty) {
-      return const Center(child: Text('暂无字幕', style: TextStyle(color: Colors.grey)));
-    }
-    // 按页过滤
-    final pageSubtitles = widget.selectedPage == 0
-        ? widget.allSubtitles
-        : widget.allSubtitles.where((s) => s.page == widget.selectedPage).toList();
-    if (pageSubtitles.isEmpty) {
-      return const Center(child: Text('当前页暂无字幕', style: TextStyle(color: Colors.grey)));
-    }
-
-    // 字幕列表
-    final filteredEntries = _subtitle?.entries.where((e) {
-          if (_searchQuery.isEmpty) return true;
-          return e.content.toLowerCase().contains(_searchQuery.toLowerCase());
-        }).toList() ?? [];
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 分P 指示器
-              if (widget.selectedPage > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text('📑 P${widget.selectedPage}',
-                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                ),
-              Row(
-                children: [
-                  const Icon(Icons.translate, size: 16),
-                  const SizedBox(width: 8),
-                  DropdownButton<String>(
-                    value: widget.selectedLang,
-                    isDense: true,
-                    items: pageSubtitles
-                        .map((s) => DropdownMenuItem(
-                              value: s.language,
-                              child: Text(s.language),
-                            ))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) widget.onLanguageChanged(v);
-                    },
-                  ),
-                  const Spacer(),
-                  if (_subtitle != null)
-                    Text(
-                      '${_subtitle!.entries.length} 条 · ${_subtitle!.fullText.length} 字 · ~${LLMClient.estimateTokens(_subtitle!.fullText)} tokens',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-              if (pageSubtitles.length > 1) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '共 ${pageSubtitles.length} 种语言',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ],
-          ),
-        ),
-        // 搜索框
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: '搜索字幕...',
-              prefixIcon: const Icon(Icons.search, size: 18),
-              isDense: true,
-              border: const OutlineInputBorder(),
-              suffixIcon: _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    ),
-            ),
-            onChanged: (v) => setState(() => _searchQuery = v),
-          ),
-        ),
-        // 字幕列表
-        Expanded(
-          child: _subtitle == null || filteredEntries.isEmpty
-              ? Center(child: Text(_searchQuery.isEmpty ? '暂无字幕' : '无匹配结果'))
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: filteredEntries.length,
-                  separatorBuilder: (_, __) => const Divider(height: 16),
-                  itemBuilder: (ctx, i) {
-                    final e = filteredEntries[i];
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${e.from.toStringAsFixed(1)}s - ${e.to.toStringAsFixed(1)}s',
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        _highlightSearch(e.content),
-                      ],
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _highlightSearch(String text) {
-    if (_searchQuery.isEmpty) return Text(text);
-    final lower = text.toLowerCase();
-    final query = _searchQuery.toLowerCase();
-    final idx = lower.indexOf(query);
-    if (idx == -1) return Text(text);
-
-    return RichText(
-      text: TextSpan(
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-        children: [
-          TextSpan(text: text.substring(0, idx)),
-          TextSpan(
-            text: text.substring(idx, idx + _searchQuery.length),
-            style: TextStyle(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          TextSpan(text: text.substring(idx + _searchQuery.length)),
-        ],
       ),
     );
   }
