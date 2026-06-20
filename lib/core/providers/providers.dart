@@ -32,8 +32,15 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 // ─── AI 配置 ────────────────────────────────────────────────────
 
 class AIConfigNotifier extends StateNotifier<AIConfig> {
+  Future<void>? _loading;
+
   AIConfigNotifier() : super(const AIConfig()) {
-    _load();
+    _loading = _load();
+  }
+
+  /// ⭐ 确保配置已加载完成 (用于避免 race condition)
+  Future<void> ensureLoaded() async {
+    await _loading;
   }
 
   Future<void> _load() async {

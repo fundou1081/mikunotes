@@ -10,16 +10,11 @@ final templatesProvider =
 
 class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
   final _storage = const FlutterSecureStorage();
+  Future<void>? _loading;
 
-  TemplatesNotifier() : super(const PromptTemplateSet()) {
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final raw = await _storage.read(key: _kStorageKey);
-      if (raw == null) {
-        state = PromptTemplateSet(
+  /// ⭐ 初始化时立即用 built-in 模板填充 state (避免首次点击生成时模板为空)
+  TemplatesNotifier()
+      : super(PromptTemplateSet(
           summaries: builtInSummaryTemplates(),
           chats: builtInChatTemplates(),
           comments: builtInCommentTemplates(),
@@ -28,14 +23,28 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
           activeChatId: 'builtin-chat-default',
           activeCommentId: 'builtin-comment-community',
           activeDanmakuId: 'builtin-danmaku-highfreq',
-        );
+        )) {
+    _loading = _load();
+  }
+
+  /// ⭐ 确保模板已加载完成 (用于避免 race condition)
+  Future<void> ensureLoaded() async {
+    await _loading;
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await _storage.read(key: _kStorageKey);
+      if (raw == null) {
+        // 首次启动: state 已经是 built-in 模板, 只需保存
         await _save();
       } else {
-        state = PromptTemplateSet.fromJsonString(raw);
-        final summaryIds = state.summaries.map((t) => t.id).toSet();
-        final chatIds = state.chats.map((t) => t.id).toSet();
-        final danmakuIds = state.danmakus.map((t) => t.id).toSet();
-        final commentIds = state.comments.map((t) => t.id).toSet();
+        // 已有用户数据: 解析并合并缺失的 built-in 模板
+        final loaded = PromptTemplateSet.fromJsonString(raw);
+        final summaryIds = loaded.summaries.map((t) => t.id).toSet();
+        final chatIds = loaded.chats.map((t) => t.id).toSet();
+        final danmakuIds = loaded.danmakus.map((t) => t.id).toSet();
+        final commentIds = loaded.comments.map((t) => t.id).toSet();
         final missingSummary = builtInSummaryTemplates()
             .where((b) => !summaryIds.contains(b.id)).toList();
         final missingChat = builtInChatTemplates()
@@ -49,29 +58,23 @@ class TemplatesNotifier extends StateNotifier<PromptTemplateSet> {
             missingComments.isNotEmpty ||
             missingDanmaku.isNotEmpty) {
           state = PromptTemplateSet(
-            summaries: [...state.summaries, ...missingSummary],
-            chats: [...state.chats, ...missingChat],
-            comments: [...state.comments, ...missingComments],
-            danmakus: [...state.danmakus, ...missingDanmaku],
-            activeSummaryId: state.activeSummaryId ?? 'builtin-summary-default',
-            activeChatId: state.activeChatId ?? 'builtin-chat-default',
-            activeCommentId: state.activeCommentId ?? 'builtin-comment-community',
-            activeDanmakuId: state.activeDanmakuId ?? 'builtin-danmaku-highfreq',
+            summaries: [...loaded.summaries, ...missingSummary],
+            chats: [...loaded.chats, ...missingChat],
+            comments: [...loaded.comments, ...missingComments],
+            danmakus: [...loaded.danmakus, ...missingDanmaku],
+            activeSummaryId: loaded.activeSummaryId ?? 'builtin-summary-default',
+            activeChatId: loaded.activeChatId ?? 'builtin-chat-default',
+            activeCommentId: loaded.activeCommentId ?? 'builtin-comment-community',
+            activeDanmakuId: loaded.activeDanmakuId ?? 'builtin-danmaku-highfreq',
           );
           await _save();
+        } else {
+          state = loaded;
         }
       }
     } catch (e) {
-      state = PromptTemplateSet(
-        summaries: builtInSummaryTemplates(),
-        chats: builtInChatTemplates(),
-        comments: builtInCommentTemplates(),
-        danmakus: builtInDanmakuTemplates(),
-        activeSummaryId: 'builtin-summary-default',
-        activeChatId: 'builtin-chat-default',
-        activeCommentId: 'builtin-comment-community',
-        activeDanmakuId: 'builtin-danmaku-highfreq',
-      );
+      // 加载失败: 保持 built-in 默认
+      // (state 已经是 built-in, 不需额外处理)
     }
   }
 

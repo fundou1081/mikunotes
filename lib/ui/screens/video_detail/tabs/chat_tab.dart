@@ -173,6 +173,8 @@ class ChatTabState extends ConsumerState<ChatTab> {
       );
       return;
     }
+    // ⭐ 等待 AI 配置加载完成
+    await ref.read(aiConfigProvider.notifier).ensureLoaded();
     if (ref.read(aiConfigProvider).apiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先配置 AI')),
@@ -342,9 +344,6 @@ class ChatTabState extends ConsumerState<ChatTab> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
-    }
-    if (widget.subtitle == null) {
-      return const Center(child: Text('请先下载字幕'));
     }
 
     // ⭐ 订阅 generationProvider 中的流式状态 (chat source)

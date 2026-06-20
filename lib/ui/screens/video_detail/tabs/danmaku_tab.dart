@@ -70,6 +70,17 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       );
       return;
     }
+    // ⭐ 等待 AI 配置 + 模板加载完成
+    await Future.wait([
+      ref.read(aiConfigProvider.notifier).ensureLoaded(),
+      ref.read(templatesProvider.notifier).ensureLoaded(),
+    ]);
+    if (ref.read(aiConfigProvider).apiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先配置 AI')),
+      );
+      return;
+    }
     final templates = ref.read(templatesProvider);
     // 弹模板选择器 (跟摘要 tab 一样的 UX)
     final templateId = await showTemplatePicker(

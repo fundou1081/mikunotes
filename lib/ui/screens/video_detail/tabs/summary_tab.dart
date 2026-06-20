@@ -46,6 +46,8 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
       );
       return;
     }
+    // ⭐ 等待 AI 配置加载完成 (避免首次点击时 apiKey 为空)
+    await ref.read(aiConfigProvider.notifier).ensureLoaded();
     if (ref.read(aiConfigProvider).apiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先配置 AI')),
@@ -78,6 +80,8 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
 
   /// 摘要模板选择器（可取消 → 返回 null）
   Future<String?> _pickSummaryTemplate() async {
+    // ⭐ 等待模板加载完成 (避免首次点击时模板为空)
+    await ref.read(templatesProvider.notifier).ensureLoaded();
     final templates = ref.read(templatesProvider);
     return showModalBottomSheet<String>(
       context: context,
