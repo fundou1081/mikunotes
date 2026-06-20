@@ -569,11 +569,17 @@ class SessionBar extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.add, size: 20),
-              tooltip: '新对话',
+            const SizedBox(width: 8),
+            // ⭐ 明显的新对话按钮 (FilledButton + icon)
+            FilledButton.tonalIcon(
               onPressed: onNew,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('新对话', style: TextStyle(fontSize: 13)),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: const Size(0, 32),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ],
         ),
