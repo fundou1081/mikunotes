@@ -44,7 +44,10 @@ class CommentTabState extends ConsumerState<CommentTab> {
       final dbLocal = ref.read(databaseProvider);
       _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
       _summaries = await dbLocal.getSummariesForVideo(widget.bvid)
-          .then((list) => list.where((s) => s.promptUsed.contains('community') || s.promptUsed.contains('tech') || s.promptUsed.contains('sentiment') || s.promptUsed.contains('舆情') || s.promptUsed.contains('评论') || s.promptUsed.contains('社区') || s.promptUsed.contains('技术') || s.promptUsed.contains('评论分析')).toList());
+          .then((list) => list.where((s) =>
+              s.promptUsed == 'comment' ||
+              s.promptUsed.startsWith('comment_')
+          ).toList());
       // ⭐ 自动选中最新总结 (如果没有选中)
       if (_summaries.isNotEmpty && _selectedSummaryId == null) {
         _selectedSummaryId = _summaries.first.id;
