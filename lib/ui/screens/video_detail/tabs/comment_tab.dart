@@ -83,11 +83,19 @@ class CommentTabState extends ConsumerState<CommentTab> {
     if (templateId == null) return; // 用户取消
 
     // ⭐ 调用流式生成 (跟摘要 tab 一样, 实时显示)
+    // fetch video title (用于渲染模板中的 {{video_title}})
+    String? videoTitle;
+    try {
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.bvid);
+      videoTitle = info['title'] as String?;
+    } catch (_) { /* ignore - fallback to 'BV $bvid' */ }
     await ref.read(generationProvider.notifier).startCommentGeneration(
       bvid: widget.bvid,
       comments: _comments,
       templateId: templateId,
       page: _page,
+      videoTitle: videoTitle,
     );
     // 完成后刷新列表
     if (mounted) _load();

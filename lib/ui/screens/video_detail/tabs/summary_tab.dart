@@ -59,12 +59,20 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
       templateId = await _pickSummaryTemplate();
       if (templateId == null) return; // 用户取消
     }
+    // fetch video title
+    String? videoTitle;
+    try {
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.bvid);
+      videoTitle = info['title'] as String?;
+    } catch (_) { /* ignore - fallback to 'BV $bvid' */ }
     await ref.read(generationProvider.notifier).startSummaryGeneration(
       bvid: widget.bvid,
       subtitle: subtitle,
       customPrompt: customPrompt,
       templateId: templateId,
       page: widget.selectedPage,
+      videoTitle: videoTitle,
     );
   }
 
@@ -159,11 +167,19 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
       );
       return;
     }
+    // fetch video title
+    String? videoTitle;
+    try {
+      final bili = ref.read(bilibiliClientProvider);
+      final info = await bili.getVideoInfo(widget.bvid);
+      videoTitle = info['title'] as String?;
+    } catch (_) { /* ignore - fallback to 'BV $bvid' */ }
     await ref.read(generationProvider.notifier).continueSummary(
       bvid: widget.bvid,
       subtitle: widget.subtitle!,
       existingContent: s.content,
       page: s.page,
+      videoTitle: videoTitle,
     );
     // 刷新总结列表
     widget.onChanged();

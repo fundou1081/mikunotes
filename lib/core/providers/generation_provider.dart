@@ -70,6 +70,7 @@ class GenerationRequest {
 
   // ─── optional ───
   final String? continueFrom;   // 从已有内容继续 (continueSummary 用)
+  final String? videoTitle;     // 视频标题 (可选, 默认用 'BV $bvid')
 
   const GenerationRequest({
     required this.bvid,
@@ -84,6 +85,7 @@ class GenerationRequest {
     this.customPrompt,
     this.templateId,
     this.continueFrom,
+    this.videoTitle,
   });
 }
 
@@ -159,6 +161,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
 
   /// source → 模板变量 (title, text, total 等)
   Map<String, String> _buildTemplateVars(GenerationRequest req, AIConfig config) {
+    final title = req.videoTitle ?? 'BV ${req.bvid}';
     return switch (req.source) {
       GenerationSource.chat => <String, String>{}, // chat 不使用模板变量 (使用预渲染 systemPrompt)
       GenerationSource.summary => () {
@@ -167,7 +170,7 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         final truncated = transcript.length > config.maxContextChars
             ? transcript.substring(0, config.maxContextChars) : transcript;
         return {
-          'video_title': 'BV ${req.bvid}',
+          'video_title': title,
           'bvid': req.bvid,
           'subtitle': transcript,
           'subtitle_truncated': truncated,
@@ -176,7 +179,6 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         };
       }(),
       GenerationSource.comment => () {
-        final title = '';
         final comments = req.comments!;
         final text = comments.map((c) => '【${c.likes}赞】${c.uname}: ${c.content}').join('\n');
         final truncated = text.length > 8000 ? '${text.substring(0, 8000)}...(已截断)' : text;
@@ -188,7 +190,6 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
         };
       }(),
       GenerationSource.danmaku => () {
-        final title = '';
         final dmks = req.danmaku!;
         // 按时间排序
         dmks.sort((a, b) => a.progress.compareTo(b.progress));
@@ -201,16 +202,6 @@ class GenerationNotifier extends StateNotifier<Map<String, GenerationState>> {
           'text': truncated,
         };
       }(),
-    };
-  }
-
-  /// source → 提示 (systemPrompt user message)
-  String _systemPromptFor(GenerationSource source) {
-    return switch (source) {
-      GenerationSource.summary => '你是B站视频内容总结助手。请严格按提示格式输出。',
-      GenerationSource.comment => '你是视频评论分析助手。',
-      GenerationSource.danmaku => '你是视频弹幕分析专家。',
-      GenerationSource.chat => '你是一个友好、专业的 AI 助手。',
     };
   }
 
@@ -336,7 +327,7 @@ ${req.continueFrom}
       StreamSubscription<String>? sub;
 
       sub = client.chatStreamWithFallback(
-        systemPrompt: _systemPromptFor(req.source), // chat 会忽略 (已预渲染)
+        systemPrompt: systemPrompt, // 使用已渲染的 (含 {{text}} 评论/弹幕内容), chat 也复用
         messages: messages,
         disableReasoning: disableReasoning,
         cancelToken: cancelToken,
@@ -514,6 +505,7 @@ ${req.continueFrom}
     String? customPrompt,
     String? templateId,
     int page = 0,
+    String? videoTitle,
   }) =>
       startGeneration(GenerationRequest(
         bvid: bvid,
@@ -522,6 +514,7 @@ ${req.continueFrom}
         subtitle: subtitle,
         customPrompt: customPrompt,
         templateId: templateId,
+        videoTitle: videoTitle,
       ));
 
   /// 评论生成 (新)
@@ -531,6 +524,7 @@ ${req.continueFrom}
     String? customPrompt,
     String? templateId,
     int page = 0,
+    String? videoTitle,
   }) =>
       startGeneration(GenerationRequest(
         bvid: bvid,
@@ -539,6 +533,7 @@ ${req.continueFrom}
         comments: comments,
         customPrompt: customPrompt,
         templateId: templateId,
+        videoTitle: videoTitle,
       ));
 
   /// 弹幕生成 (新)
@@ -548,6 +543,7 @@ ${req.continueFrom}
     String? customPrompt,
     String? templateId,
     int page = 0,
+    String? videoTitle,
   }) =>
       startGeneration(GenerationRequest(
         bvid: bvid,
@@ -556,6 +552,7 @@ ${req.continueFrom}
         danmaku: danmaku,
         customPrompt: customPrompt,
         templateId: templateId,
+        videoTitle: videoTitle,
       ));
 
   /// 对话生成 (新) — 多轮 chat, 使用预渲染 systemPrompt + chatHistory
@@ -580,6 +577,7 @@ ${req.continueFrom}
     required String existingContent,
     String? templateId,
     int page = 0,
+    String? videoTitle,
   }) =>
       startGeneration(GenerationRequest(
         bvid: bvid,
@@ -588,6 +586,7 @@ ${req.continueFrom}
         subtitle: subtitle,
         templateId: templateId,
         continueFrom: existingContent,
+        videoTitle: videoTitle,
       ));
 }
 
