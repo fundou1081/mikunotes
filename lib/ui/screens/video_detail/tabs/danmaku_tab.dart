@@ -120,20 +120,20 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       final selected = _summaries.firstWhere((s) => s.id == _selectedSummaryId);
       return Column(
         children: [
-          SummaryPicker(
-            summaries: _summaries,
-            selectedId: _selectedSummaryId,
-            onSelect: (s) => setState(() => _selectedSummaryId = s.id),
-            onDelete: (s) async {
-              await ref.read(videoRepositoryProvider).deleteSummary(s.id);
-              _load();
-            },
-          ),
+          // 顶部: 状态文字 + 工具栏 (无 chip grid)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
             child: Row(
               children: [
-                const Spacer(),
+                Expanded(
+                  child: Text(
+                    '历史 (${_summaries.length}) · 选中 #${selected.id.substring(0, 8)}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 SummaryToolbar(
                   content: selected.content,
                   sourceType: SourceType.danmaku,
