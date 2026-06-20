@@ -518,14 +518,6 @@ class SessionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usage = maxTokens > 0 ? (tokensUsed / maxTokens).clamp(0.0, 1.0) : 0.0;
-    // 颜色: < 50% 绿, 50-80% 黄, > 80% 红
-    final color = usage < 0.5
-        ? Colors.green
-        : usage < 0.8
-            ? Colors.orange
-            : Colors.red;
-    final pct = (usage * 100).toStringAsFixed(0);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
@@ -547,26 +539,12 @@ class SessionBar extends StatelessWidget {
                 ),
               ),
             ),
-            // ⭐ token 显示: 数字 + 百分比 (醒目颜色)
+            // ⭐ token 显示: 只显示绝对值, 不显示百分比 (上下文窗口大小未知, 百分比无意义)
             Text(
-              '~$tokensUsed ($pct%)',
+              '~$tokensUsed tokens',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.outline,
                   ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 80,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: usage,
-                  minHeight: 6,
-                  backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                  valueColor: AlwaysStoppedAnimation(color),
-                ),
-              ),
             ),
             const SizedBox(width: 8),
             // ⭐ 明显的新对话按钮 (FilledButton + icon)
