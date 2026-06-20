@@ -500,6 +500,14 @@ class ChatSubtitleContext extends StatelessWidget {
 }
 
 class SessionBar extends StatelessWidget {
+  /// ⭐ token 格式化: ≥1000 显示 k (例如 7.1k), <1000 显示原始
+  static String _fmtTokens(int t) {
+    if (t >= 10000) return '${(t / 1000).toStringAsFixed(0)}k';
+    if (t >= 1000) return '${(t / 1000).toStringAsFixed(1)}k';
+    return '$t';
+  }
+
+
   final String title;
   final int messageCount;
   final int tokensUsed;
@@ -539,9 +547,9 @@ class SessionBar extends StatelessWidget {
                 ),
               ),
             ),
-            // ⭐ token 显示: 只显示绝对值, 不显示百分比 (上下文窗口大小未知, 百分比无意义)
+            // ⭐ token 显示: 以 k 为单位 (不精确, 易读)
             Text(
-              '~$tokensUsed tokens',
+              '~${_fmtTokens(tokensUsed)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.outline,
                   ),
