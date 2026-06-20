@@ -56,20 +56,25 @@ class ChatTabState extends ConsumerState<ChatTab> {
     _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
     _danmaku = await dbLocal.getDanmakuForVideo(widget.bvid, page: _page);
     if (mounted) setState(() {});
+    // ⭐ 加载源后重算 token (chatSources 中启用 comment/danmaku 的会带进 token)
+    final sourceText = _buildSourceContext().join('\n\n');
+    final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
+    _tokensUsed = LLMClient.estimateTokens('$sourceText$msgsTotal');
+    if (mounted) setState(() {});
   }
 
   @override
   void didUpdateWidget(covariant ChatTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 分P 切换时: 重新计算 tokens + 重新加载评论/弹幕数据
+    // 字幕变化时: 重算 token (考虑 chatSources 中选中的源)
     if (oldWidget.subtitle != widget.subtitle) {
+      final sourceText = _buildSourceContext().join('\n\n');
       final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
       setState(() {
-        _tokensUsed = LLMClient.estimateTokens(
-          '${widget.subtitle?.fullText ?? ''}$msgsTotal',
-        );
+        _tokensUsed = LLMClient.estimateTokens('$sourceText$msgsTotal');
       });
     }
+    // 分P 切换时: 重新加载评论/弹幕 (token 会在 _loadSources 里重算)
     if (oldWidget.selectedPage != widget.selectedPage) {
       _loadSources();
     }
@@ -222,27 +227,8 @@ class ChatTabState extends ConsumerState<ChatTab> {
     _scrollToBottom();
 
     // 构造上下文 (根据数据源 chip 选择)
-    final subText = widget.subtitle?.fullText ?? '';
-    final commentText = _chatSources.contains(DataSource.comment)
-        ? _comments.map((c) => '【${c.likes}赞】${c.uname}: ${c.content}').join('\n')
-        : '';
-    final danmakuText = _chatSources.contains(DataSource.danmaku)
-        ? _danmaku.take(300).map((d) => '[${_fmtTimeMs(d.progress)}] ${d.content}').join('\n')
-        : '';
-
-    final sourceContext = <String>[];
-    if (subText.isNotEmpty && _chatSources.contains(DataSource.subtitle)) {
-      final truncated = subText.length > 4000 ? '${subText.substring(0, 4000)}...(已截断)' : subText;
-      sourceContext.add('## 字幕文本\n' + truncated);
-    }
-    if (commentText.isNotEmpty) {
-      final truncated = commentText.length > 2000 ? '${commentText.substring(0, 2000)}...(已截断)' : commentText;
-      sourceContext.add('## 评论\n' + truncated);
-    }
-    if (danmakuText.isNotEmpty) {
-      final truncated = danmakuText.length > 2000 ? '${danmakuText.substring(0, 2000)}...(已截断)' : danmakuText;
-      sourceContext.add('## 弹幕\n' + truncated);
-    }
+    final sourceContext = _buildSourceContext();
+    final sourceText = sourceContext.join('\n\n');
 
     final sessionMsgs = await repo.getChatMessages(session.id);
     final history = sessionMsgs
@@ -254,8 +240,6 @@ class ChatTabState extends ConsumerState<ChatTab> {
     final activeChat = templates.activeChat;
     final chatTemplate = activeChat?.content ??
         (config.chatTemplate.isNotEmpty ? config.chatTemplate : llm_tpl.defaultChatTemplate);
-    // Build source text from selected chips
-    final sourceText = sourceContext.join('\n\n');
     final systemPrompt = llm_tpl.PromptTemplate.render(chatTemplate, {
       'title': 'BV ${widget.bvid}',
       'bvid': widget.bvid,
@@ -292,6 +276,48 @@ class ChatTabState extends ConsumerState<ChatTab> {
         );
       }
     }
+  }
+
+  /// ⭐ 构造上下文 (根据 _chatSources chip 选择)
+  /// 返回 List<String>, 顺序: 字幕 → 评论 → 弹幕
+  /// chip 未选中的数据源不包含进上下文
+  List<String> _buildSourceContext() {
+    final subText = widget.subtitle?.fullText ?? '';
+    final commentText = _chatSources.contains(DataSource.comment)
+        ? _comments.map((c) => '【${c.likes}赞】${c.uname}: ${c.content}').join('\n')
+        : '';
+    final danmakuText = _chatSources.contains(DataSource.danmaku)
+        ? _danmaku.take(300).map((d) => '[${_fmtTimeMs(d.progress)}] ${d.content}').join('\n')
+        : '';
+
+    final parts = <String>[];
+    if (subText.isNotEmpty && _chatSources.contains(DataSource.subtitle)) {
+      final truncated = subText.length > 4000
+          ? '${subText.substring(0, 4000)}...(已截断)'
+          : subText;
+      parts.add('## 字幕文本\n$truncated');
+    }
+    if (commentText.isNotEmpty) {
+      final truncated = commentText.length > 2000
+          ? '${commentText.substring(0, 2000)}...(已截断)'
+          : commentText;
+      parts.add('## 评论\n$truncated');
+    }
+    if (danmakuText.isNotEmpty) {
+      final truncated = danmakuText.length > 2000
+          ? '${danmakuText.substring(0, 2000)}...(已截断)'
+          : danmakuText;
+      parts.add('## 弹幕\n$truncated');
+    }
+    return parts;
+  }
+
+  /// ⭐ 重算 _tokensUsed (根据当前 _chatSources + 消息历史)
+  void _recomputeTokens() {
+    final sourceText = _buildSourceContext().join('\n\n');
+    final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
+    final tokens = LLMClient.estimateTokens('$sourceText$msgsTotal');
+    if (mounted) setState(() => _tokensUsed = tokens);
   }
 
   String _fmtTimeMs(int ms) {
@@ -365,6 +391,10 @@ class ChatTabState extends ConsumerState<ChatTab> {
                       } else {
                         _chatSources.remove(s);
                       }
+                      // ⭐ chip 变化后重算 token
+                      final sourceText = _buildSourceContext().join('\n\n');
+                      final msgsTotal = _messages.fold(0, (sum, m) => sum + m.content.length);
+                      _tokensUsed = LLMClient.estimateTokens('$sourceText$msgsTotal');
                     });
                   } : null,
                   visualDensity: VisualDensity.compact,
@@ -490,6 +520,13 @@ class SessionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final usage = maxTokens > 0 ? (tokensUsed / maxTokens).clamp(0.0, 1.0) : 0.0;
+    // 颜色: < 50% 绿, 50-80% 黄, > 80% 红
+    final color = usage < 0.5
+        ? Colors.green
+        : usage < 0.8
+            ? Colors.orange
+            : Colors.red;
+    final pct = (usage * 100).toStringAsFixed(0);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
@@ -511,16 +548,28 @@ class SessionBar extends StatelessWidget {
                 ),
               ),
             ),
-            Text('~$tokensUsed tokens',
-                style: Theme.of(context).textTheme.bodySmall),
+            // ⭐ token 显示: 数字 + 百分比 (醒目颜色)
+            Text(
+              '~$tokensUsed ($pct%)',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 60,
-              child: LinearProgressIndicator(
-                value: usage,
-                backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              width: 80,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: usage,
+                  minHeight: 6,
+                  backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
               ),
             ),
+            const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.add, size: 20),
               tooltip: '新对话',
