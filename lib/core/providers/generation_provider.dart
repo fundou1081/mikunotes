@@ -588,6 +588,44 @@ ${req.continueFrom}
         continueFrom: existingContent,
         videoTitle: videoTitle,
       ));
+
+  /// 继续生成评论总结 (从已有评论总结继续)
+  Future<void> continueCommentGeneration({
+    required String bvid,
+    required List<Comment> comments,
+    required String existingContent,
+    String? templateId,
+    int page = 0,
+    String? videoTitle,
+  }) =>
+      startGeneration(GenerationRequest(
+        bvid: bvid,
+        source: GenerationSource.comment,
+        page: page,
+        comments: comments,
+        templateId: templateId,
+        continueFrom: existingContent,
+        videoTitle: videoTitle,
+      ));
+
+  /// 继续生成弹幕总结 (从已有弹幕总结继续)
+  Future<void> continueDanmakuGeneration({
+    required String bvid,
+    required List<DanmakuData> danmaku,
+    required String existingContent,
+    String? templateId,
+    int page = 0,
+    String? videoTitle,
+  }) =>
+      startGeneration(GenerationRequest(
+        bvid: bvid,
+        source: GenerationSource.danmaku,
+        page: page,
+        danmaku: danmaku,
+        templateId: templateId,
+        continueFrom: existingContent,
+        videoTitle: videoTitle,
+      ));
 }
 
 final generationProvider = StateNotifierProvider<GenerationNotifier, Map<String, GenerationState>>(

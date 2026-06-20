@@ -207,3 +207,149 @@ class SummaryPicker extends StatelessWidget {
 
   String _fmtDate(DateTime d) => '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
+
+// ─────────────────────────────────────────────────────────────────
+// ⭐ 右上角工具栏 (三个 tab 复用) — 复制 + 下载设置菜单
+// ─────────────────────────────────────────────────────────────────
+
+enum SourceType { summary, comment, danmaku }
+
+/// 右上角工具栏 — 复制 + 下载设置
+class SummaryToolbar extends StatelessWidget {
+  final String content; // 当前显示的总结内容 (用于复制)
+  final SourceType sourceType;
+  final VoidCallback? onDownloadSettings; // 点击「下载设置」后的回调
+
+  const SummaryToolbar({
+    super.key,
+    required this.content,
+    required this.sourceType,
+    this.onDownloadSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 复制按钮
+        IconButton(
+          tooltip: '复制总结',
+          icon: const Icon(Icons.copy, size: 20),
+          onPressed: content.isEmpty
+              ? null
+              : () async {
+                  await Clipboard.setData(ClipboardData(text: content));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已复制到剪贴板'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+        ),
+        // 下载设置菜单 (跟复制并列)
+        PopupMenuButton<String>(
+          tooltip: '下载设置',
+          icon: const Icon(Icons.settings, size: 20),
+          onSelected: (v) {
+            switch (v) {
+              case 'settings':
+                onDownloadSettings?.call();
+                break;
+            }
+          },
+          itemBuilder: (ctx) => [
+            const PopupMenuItem(
+              value: 'settings',
+              child: Row(children: [
+                Icon(Icons.tune, size: 18),
+                SizedBox(width: 8),
+                Text('下载设置'),
+              ]),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ⭐ 底部动作栏 — 三个 tab 复用 — 历史/继续生成/重新生成
+// ─────────────────────────────────────────────────────────────────
+
+/// 底部动作栏 — 三个按钮排成一排
+///
+/// - historyLabel: 「历史 (N)」 或 「历史」 (无历史时)
+/// - onContinue: null 表示不显示「继续生成」按钮 (如评论/弹幕 LLM 输出短, 默认不展示)
+/// - mainActionLabel: 「生成 AI 总结」 或 「重新生成」
+/// - mainActionIcon: 默认 auto_awesome
+class BottomActionBar extends StatelessWidget {
+  final String historyLabel;
+  final VoidCallback onHistory;
+  final VoidCallback? onContinue;
+  final String? continueTooltip; // 「继续生成」按钮的 tooltip
+  final String mainActionLabel;
+  final VoidCallback onMainAction;
+  final IconData mainActionIcon;
+  final bool isRunning;
+
+  const BottomActionBar({
+    super.key,
+    required this.historyLabel,
+    required this.onHistory,
+    required this.onContinue,
+    required this.mainActionLabel,
+    required this.onMainAction,
+    this.continueTooltip,
+    this.mainActionIcon = Icons.auto_awesome,
+    this.isRunning = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            // 历史按钮
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: isRunning ? null : onHistory,
+                icon: const Icon(Icons.history, size: 18),
+                label: Text(historyLabel),
+              ),
+            ),
+            // 继续生成按钮 (可选)
+            if (onContinue != null) ...[
+              const SizedBox(width: 6),
+              Expanded(
+                child: Tooltip(
+                  message: continueTooltip ?? '点击从已有内容继续写',
+                  child: FilledButton.tonalIcon(
+                    onPressed: isRunning ? null : onContinue,
+                    icon: const Icon(Icons.play_circle_outline, size: 18),
+                    label: const Text('继续生成'),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(width: 6),
+            // 重新生成 / 生成按钮
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isRunning ? null : onMainAction,
+                icon: Icon(mainActionIcon, size: 18),
+                label: Text(mainActionLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

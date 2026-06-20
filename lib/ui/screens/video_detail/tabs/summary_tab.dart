@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:mikunotes/core/llm/prompt_template.dart' as llm_tpl;
@@ -9,6 +8,7 @@ import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/ui/screens/video_detail/math_markdown.dart';
+import 'package:mikunotes/ui/screens/video_detail/widgets/shared_data.dart';
 import 'package:mikunotes/ui/screens/video_detail/widgets/summaries_list_sheet.dart';
 
 class SummaryTab extends ConsumerStatefulWidget {
@@ -137,18 +137,7 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
     );
   }
 
-  Future<void> _copySummary(String content) async {
-    await Clipboard.setData(ClipboardData(text: content));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✓ 已复制到剪贴板'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  /// 提示信息: 显示当前 max_tokens, 帮用户判断是不是被截断
+    /// 提示信息: 显示当前 max_tokens, 帮用户判断是不是被截断
   String _continueTooltip(summary_model.Summary s) {
     final config = ref.read(aiConfigProvider);
     final curLen = s.content.length;
@@ -227,11 +216,19 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
           );
           return Column(
             children: [
+              // 顶部: 历史标题 + 右上角工具栏 (复制 + 下载设置)
               Padding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 8, 4, 0),
                 child: Row(children: [
-                  Text('历史: ${selected.title}', style: Theme.of(context).textTheme.labelMedium),
-                  const Spacer(),
+                  Expanded(
+                    child: Text('历史: ${selected.title}',
+                        style: Theme.of(context).textTheme.labelMedium,
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  SummaryToolbar(
+                    content: selected.content,
+                    sourceType: SourceType.summary,
+                  ),
                   TextButton.icon(
                     onPressed: () => setState(() => _selectedSummaryId = null),
                     icon: const Icon(Icons.arrow_back, size: 16),
@@ -248,6 +245,16 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
                   ),
                 ),
               ),
+              // ⭐ 底部: 三按钮一排 (历史/继续/重新生成)
+              BottomActionBar(
+                historyLabel: '历史 (${pageFiltered.length})',
+                onHistory: _showExistingSummaries,
+                onContinue: () => _continueSummary(selected),
+                continueTooltip: _continueTooltip(selected),
+                mainActionLabel: '重新生成',
+                onMainAction: _generateSummary,
+                isRunning: genState?.source == GenerationSource.summary && (genState?.isRunning ?? false),
+              ),
             ],
           );
         }
@@ -257,6 +264,27 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
           return Column(
             children: [
               const LinearProgressIndicator(),
+              // 顶部: 进度文字 + 工具栏 (复制内容)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 4, 0),
+                child: Row(children: [
+                  const Icon(Icons.auto_awesome, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      genState.content.isEmpty
+                          ? 'AI 思考中…'
+                          : '${genState.content.length} 字',
+                      style: Theme.of(context).textTheme.labelMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SummaryToolbar(
+                    content: genState.content,
+                    sourceType: SourceType.summary,
+                  ),
+                ]),
+              ),
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
@@ -266,23 +294,21 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    // ignore: unnecessary_non_null_assertion
-                    if (genState!.isCompleted) {
-                      // 已完成 → 立即跳到总结视图
-                      ref.read(generationProvider.notifier).clear(widget.bvid);
-                    } else {
-                      ref.read(generationProvider.notifier).cancel(widget.bvid);
-                    }
-                  },
-                  // ignore: unnecessary_non_null_assertion
-                  icon: Icon(genState!.isCompleted ? Icons.check : Icons.stop),
-                  // ignore: unnecessary_non_null_assertion
-                  label: Text(genState!.isCompleted ? '查看总结' : '停止生成'),
-                ),
+              // ⭐ 底部: 统一动作栏 (停止/查看汇总 进 「继续/查看/重新生成」 统一入口)
+              BottomActionBar(
+                historyLabel: '历史 (${pageFiltered.length})',
+                onHistory: _showExistingSummaries,
+                onContinue: null, // 正在生成时不提供续生成
+                mainActionLabel: genState.isCompleted ? '查看总结' : '停止生成',
+                mainActionIcon: genState.isCompleted ? Icons.check : Icons.stop,
+                onMainAction: () {
+                  if (genState.isCompleted) {
+                    ref.read(generationProvider.notifier).clear(widget.bvid);
+                  } else {
+                    ref.read(generationProvider.notifier).cancel(widget.bvid);
+                  }
+                },
+                isRunning: !genState.isCompleted,
               ),
             ],
           );
@@ -328,39 +354,28 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
   }
 
   Widget _buildSummaryView(summary_model.Summary s, List<summary_model.Summary> all) {
+    final genState = ref.watch(generationProvider)[widget.bvid];
+    final isRunning = genState?.source == GenerationSource.summary && (genState?.isRunning ?? false);
     return Column(
       children: [
-        // 顶部菜单栏 (复制/查看原文 等)
+        // 顶部: 时间标签 + 右上角工具栏 (复制 + 下载设置)
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+          padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
           child: Row(
             children: [
-              Text(
-                '总结 #${s.id.substring(0, 8)} · ${_formatTime(s.createdAt)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.outline,
+              Expanded(
+                child: Text(
+                  '总结 #${s.id.substring(0, 8)} · ${_formatTime(s.createdAt)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, size: 20),
-                tooltip: '更多操作',
-                onSelected: (v) {
-                  if (v == 'copy') {
-                    _copySummary(s.content);
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'copy',
-                    child: Row(children: [
-                      Icon(Icons.copy, size: 18),
-                      SizedBox(width: 8),
-                      Text('复制全部内容'),
-                    ]),
-                  ),
-                ],
+              SummaryToolbar(
+                content: s.content,
+                sourceType: SourceType.summary,
               ),
             ],
           ),
@@ -379,35 +394,15 @@ class SummaryTabState extends ConsumerState<SummaryTab> {
             ),
           ),
         ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              alignment: WrapAlignment.spaceEvenly,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _showExistingSummaries,
-                  icon: const Icon(Icons.history, size: 18),
-                  label: Text('历史 (${all.length})'),
-                ),
-                Tooltip(
-                  message: _continueTooltip(s),
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => _continueSummary(s),
-                    icon: const Icon(Icons.play_circle_outline, size: 18),
-                    label: const Text('继续生成'),
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: _generateSummary,
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: const Text('重新生成'),
-                ),
-              ],
-            ),
-          ),
+        // ⭐ 底部: 三按钮一排
+        BottomActionBar(
+          historyLabel: '历史 (${all.length})',
+          onHistory: _showExistingSummaries,
+          onContinue: () => _continueSummary(s),
+          continueTooltip: _continueTooltip(s),
+          mainActionLabel: '重新生成',
+          onMainAction: _generateSummary,
+          isRunning: isRunning,
         ),
       ],
     );

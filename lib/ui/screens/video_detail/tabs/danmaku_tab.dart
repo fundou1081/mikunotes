@@ -115,8 +115,9 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
 
     final genState = ref.watch(generationProvider)[widget.bvid];
 
-    // 有历史总结: 显示总结视图 + picker
+    // 有历史总结: 显示总结视图 + 三按钮 + 工具栏 (统一布局)
     if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
+      final selected = _summaries.firstWhere((s) => s.id == _selectedSummaryId);
       return Column(
         children: [
           SummaryPicker(
@@ -128,8 +129,28 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
               _load();
             },
           ),
-          Expanded(
-            child: SummaryView(summary: _summaries.firstWhere((s) => s.id == _selectedSummaryId)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                const Spacer(),
+                SummaryToolbar(
+                  content: selected.content,
+                  sourceType: SourceType.danmaku,
+                  onDownloadSettings: widget.onDownloadRequest,
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: SummaryView(summary: selected)),
+          // ⭐ 底部: 三按钮一排
+          BottomActionBar(
+            historyLabel: '历史 (${_summaries.length})',
+            onHistory: _showSummaryHistory,
+            onContinue: _summaries.isNotEmpty ? () => _continueSummary(selected) : null,
+            mainActionLabel: '重新生成',
+            onMainAction: _generate,
+            isRunning: genState?.source == GenerationSource.danmaku && (genState?.isRunning ?? false),
           ),
         ],
       );
@@ -137,42 +158,7 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
 
     // ⭐ 正在生成 (或刚完成, 避免闪屏)
     if (genState != null && genState.source == GenerationSource.danmaku && (genState.isRunning || genState.isCompleted)) {
-      return Column(
-        children: [
-          const LinearProgressIndicator(),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(children: [
-              const Icon(Icons.auto_awesome, size: 18),
-              const SizedBox(width: 8),
-              Text('${genState.content.length} 字 · ${genState.isCompleted ? "已完成" : "AI 思考中..."}',
-                  style: Theme.of(context).textTheme.labelMedium),
-              const Spacer(),
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  if (genState.isCompleted) {
-                    ref.read(generationProvider.notifier).clear(widget.bvid);
-                    if (mounted) setState(() {});
-                  } else {
-                    ref.read(generationProvider.notifier).cancel(widget.bvid);
-                  }
-                },
-                icon: Icon(genState.isCompleted ? Icons.check : Icons.stop, size: 18),
-                label: Text(genState.isCompleted ? '查看总结' : '停止'),
-              ),
-            ]),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: SelectableText(
-                genState.content.isEmpty ? '(AI 思考中…)' : genState.content,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          ),
-        ],
-      );
+      return _buildStreamingView(genState);
     }
 
     // 生成失败
@@ -210,60 +196,118 @@ class DanmakuTabState extends ConsumerState<DanmakuTab> {
       );
     }
 
-    // 有弹幕但还没总结: 显示生成按钮 + 历史入口 (跟 Summary tab 一致)
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: Row(
-              children: [
-                Icon(Icons.lightbulb_outline, color: Theme.of(context).colorScheme.onPrimaryContainer),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '共 ${_danmaku.length} 条弹幕',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
-                  ),
-                ),
-                IconButton(
-                  tooltip: '重新下载弹幕',
-                  icon: const Icon(Icons.refresh, size: 18),
-                  onPressed: widget.onDownloadRequest,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: genState?.isRunning == true ? null : _generate,
-                icon: const Icon(Icons.auto_awesome),
-                label: Text(genState?.isRunning == true ? '生成中...' : '生成 AI 总结'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+    // 有弹幕但还没总结: 三按钮一排 (统一布局)
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Row(
+            children: [
+              Icon(Icons.lightbulb_outline, color: Theme.of(context).colorScheme.onPrimaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '共 ${_danmaku.length} 条弹幕',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
                 ),
               ),
-            ),
-            if (_summaries.isNotEmpty) ...[
-              const SizedBox(width: 8),
               IconButton(
-                onPressed: () => setState(() => _selectedSummaryId = _summaries.first.id),
-                icon: const Icon(Icons.history),
-                tooltip: '历史总结',
+                tooltip: '重新下载弹幕',
+                icon: Icon(Icons.refresh, size: 18,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer),
+                onPressed: widget.onDownloadRequest,
               ),
             ],
-          ]),
-          const Spacer(),
-        ],
-      ),
+          ),
+        ),
+        const Spacer(),
+        // ⭐ 底部: 三按钮一排
+        BottomActionBar(
+          historyLabel: _summaries.isNotEmpty ? '历史 (${_summaries.length})' : '历史',
+          onHistory: _showSummaryHistory,
+          onContinue: null,
+          mainActionLabel: '生成 AI 总结',
+          onMainAction: _generate,
+          isRunning: genState?.source == GenerationSource.danmaku && (genState?.isRunning ?? false),
+        ),
+      ],
     );
   }
 
+  void _showSummaryHistory() {
+    if (_summaries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有历史总结')),
+      );
+      return;
+    }
+    setState(() => _selectedSummaryId = _summaries.first.id);
+  }
+
+  Future<void> _continueSummary(Summary selected) async {
+    await ref.read(generationProvider.notifier).continueDanmakuGeneration(
+      bvid: widget.bvid,
+      danmaku: _danmaku,
+      existingContent: selected.content,
+      page: _page,
+    );
+    if (mounted) _load();
+  }
+
+  Widget _buildStreamingView(GenerationState genState) {
+    final isRunning = genState.isRunning;
+    return Column(
+      children: [
+        const LinearProgressIndicator(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 4, 0),
+          child: Row(children: [
+            const Icon(Icons.auto_awesome, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                isRunning
+                    ? 'AI 思考中… ${genState.content.length} 字'
+                    : '已完成 ${genState.content.length} 字',
+                style: Theme.of(context).textTheme.labelMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SummaryToolbar(
+              content: genState.content,
+              sourceType: SourceType.danmaku,
+              onDownloadSettings: widget.onDownloadRequest,
+            ),
+          ]),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SelectableText(
+              genState.content.isEmpty ? '(AI 思考中…)' : genState.content,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ),
+        BottomActionBar(
+          historyLabel: _summaries.isNotEmpty ? '历史 (${_summaries.length})' : '历史',
+          onHistory: _showSummaryHistory,
+          onContinue: null,
+          mainActionLabel: genState.isCompleted ? '查看总结' : '停止生成',
+          mainActionIcon: genState.isCompleted ? Icons.check : Icons.stop,
+          onMainAction: () {
+            if (genState.isCompleted) {
+              ref.read(generationProvider.notifier).clear(widget.bvid);
+              if (mounted) _load();
+            } else {
+              ref.read(generationProvider.notifier).cancel(widget.bvid);
+            }
+          },
+          isRunning: !genState.isCompleted,
+        ),
+      ],
+    );
+  }
 }
 // 原始数据 Tab — chip 多选 (字幕/评论/弹幕)
