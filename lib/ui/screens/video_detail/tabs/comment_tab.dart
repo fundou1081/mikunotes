@@ -1,106 +1,64 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mikunotes/core/providers/providers.dart';
+
+import 'package:mikunotes/core/models/prompt_template.dart';
 import 'package:mikunotes/core/providers/generation_provider.dart';
+import 'package:mikunotes/core/providers/providers.dart';
 import 'package:mikunotes/core/providers/templates_provider.dart';
 import 'package:mikunotes/core/storage/database.dart' show Comment, Summary;
+import 'package:mikunotes/ui/screens/video_detail/tabs/generation_tab_base.dart';
 import 'package:mikunotes/ui/screens/video_detail/widgets/shared_data.dart';
 
-class CommentTab extends ConsumerStatefulWidget {
-  final String bvid;
+/// 评论 Tab — 继承 GenerationTab 基类
+class CommentTab extends GenerationTab<CommentTab> {
+  const CommentTab({
+    super.key,
+    required super.bvid,
+    this.selectedPage = 0,
+    this.onDownloadRequest,
+  }) : super(selectedPage: selectedPage, onDownloadRequest: onDownloadRequest);
+
   final int selectedPage;
   final VoidCallback? onDownloadRequest;
 
-  const CommentTab({
-    super.key,
-    required this.bvid,
-    this.selectedPage = 1,
-    this.onDownloadRequest,
-  });
+  @override
+  GenerationSource get source => GenerationSource.comment;
+  @override
+  String get sourceLabel => '评论';
+  @override
+  TemplateType get templateType => TemplateType.comment;
+  @override
+  String? activeTemplateId(PromptTemplateSet t) => t.activeCommentId;
+  @override
+  List<PromptTemplate> availableTemplates(PromptTemplateSet t) => t.comments;
 
   @override
-  ConsumerState<CommentTab> createState() => CommentTabState();
+  ConsumerState<CommentTab> createState() => _CommentTabState();
 }
 
-class CommentTabState extends ConsumerState<CommentTab> {
-  List<Summary> _summaries = [];
+class _CommentTabState extends GenerationTabState<CommentTab> {
   List<Comment> _comments = [];
-  bool _loading = true;
-  String? _error;
-  String? _selectedSummaryId;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  bool get hasSourceData => _comments.isNotEmpty;
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final dbLocal = ref.read(databaseProvider);
-      _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
-      _summaries = await dbLocal.getSummariesForVideo(widget.bvid)
-          .then((list) => list.where((s) =>
-              s.promptUsed == 'comment' ||
-              s.promptUsed.startsWith('comment_')
-          ).toList());
-      // ⭐ 自动选中最新总结 (如果没有选中)
-      if (_summaries.isNotEmpty && _selectedSummaryId == null) {
-        _selectedSummaryId = _summaries.first.id;
-      } else if (_selectedSummaryId != null && !_summaries.any((s) => s.id == _selectedSummaryId)) {
-        _selectedSummaryId = _summaries.isNotEmpty ? _summaries.first.id : null;
-      }
-    } catch (e) {
-      _error = '$e';
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+  @override
+  Future<void> loadSourceData() async {
+    final dbLocal = ref.read(databaseProvider);
+    _comments = await dbLocal.getCommentsForVideo(widget.bvid, page: _page);
   }
 
   int get _page => widget.selectedPage == 0 ? 1 : widget.selectedPage;
 
-
-
-  Future<void> _generate() async {
+  @override
+  Future<void> doGenerate({
+    required String? templateId,
+    required String? videoTitle,
+  }) async {
     if (_comments.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先点击上方「下载评论」')),
-      );
+      if (mounted) showAppSnackBar(context, '请先点击上方「下载评论」');
       return;
     }
-    // ⭐ 等待 AI 配置 + 模板加载完成
-    await Future.wait([
-      ref.read(aiConfigProvider.notifier).ensureLoaded(),
-      ref.read(templatesProvider.notifier).ensureLoaded(),
-    ]);
-    if (ref.read(aiConfigProvider).apiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先配置 AI')),
-      );
-      return;
-    }
-    final templates = ref.read(templatesProvider);
-    // 弹模板选择器 (跟摘要 tab 一样的 UX)
-    final templateId = await showTemplatePicker(
-      context,
-      title: '选评论模板',
-      templates: templates.comments,
-      activeId: templates.activeCommentId,
-    );
-    if (templateId == null) return; // 用户取消
-
-    // ⭐ 调用流式生成 (跟摘要 tab 一样, 实时显示)
-    // fetch video title (用于渲染模板中的 {{video_title}})
-    String? videoTitle;
-    try {
-      final bili = ref.read(bilibiliClientProvider);
-      final info = await bili.getVideoInfo(widget.bvid);
-      videoTitle = info['title'] as String?;
-    } catch (_) { /* ignore - fallback to 'BV $bvid' */ }
     await ref.read(generationProvider.notifier).startCommentGeneration(
       bvid: widget.bvid,
       comments: _comments,
@@ -108,71 +66,28 @@ class CommentTabState extends ConsumerState<CommentTab> {
       page: _page,
       videoTitle: videoTitle,
     );
-    // 完成后刷新列表
-    if (mounted) _load();
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text('错误: $_error'));
-
-    final genState = ref.watch(generationProvider)[widget.bvid];
-
-    // 有历史总结: 显示总结视图 + 三按钮 + 工具栏 (统一布局)
-    if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
-      final selected = _summaries.firstWhere((s) => s.id == _selectedSummaryId);
-      return Column(
-        children: [
-          // 顶部: 状态文字 + 工具栏 (无 chip grid)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '历史 (${_summaries.length}) · 选中 #${selected.id.substring(0, 8)}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SummaryToolbar(
-                  content: selected.content,
-                  sourceType: SourceType.comment,
-                  onDownloadSettings: widget.onDownloadRequest,
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SummaryView(summary: selected),
-          ),
-          // ⭐ 底部: 三按钮一排
-          BottomActionBar(
-            historyLabel: '历史 (${_summaries.length})',
-            onHistory: _showSummaryHistory,
-            onContinue: _summaries.isNotEmpty ? () => _continueSummary(selected) : null,
-            mainActionLabel: '重新生成',
-            onMainAction: _generate,
-            isRunning: genState?.source == GenerationSource.comment && (genState?.isRunning ?? false),
-          ),
-        ],
-      );
+  Future<void> doContinueSummary(
+    Summary selected, {
+    required String? videoTitle,
+  }) async {
+    if (_comments.isEmpty) {
+      if (mounted) showAppSnackBar(context, '请先下载评论');
+      return;
     }
+    await ref.read(generationProvider.notifier).continueCommentGeneration(
+      bvid: widget.bvid,
+      comments: _comments,
+      existingContent: selected.content,
+      page: _page,
+      videoTitle: videoTitle,
+    );
+  }
 
-    // ⭐ 正在生成 (或刚完成, 避免闪屏)
-    if (genState != null && genState.source == GenerationSource.comment && (genState.isRunning || genState.isCompleted)) {
-      return _buildStreamingView(genState);
-    }
-
-    // 生成失败
-    if (genState != null && genState.source == GenerationSource.comment && genState.error != null) {
-      return _buildErrorView(genState);
-    }
-
-    // 空状态: 还没下载评论
+  @override
+  Widget _buildDataOrEmptyView(GenerationState? genState) {
     if (_comments.isEmpty) {
       return EmptyDataState(
         icon: Icons.comment_outlined,
@@ -181,11 +96,13 @@ class CommentTabState extends ConsumerState<CommentTab> {
         onDownload: widget.onDownloadRequest,
       );
     }
+    return _buildDataView(genState);
+  }
 
-    // 有评论但还没总结: 三按钮一排 (统一布局)
+  Widget _buildDataView(GenerationState? genState) {
     return Column(
       children: [
-        // 顶部: 数据信息条 + 工具栏
+        // 顶部: 数据信息条
         Container(
           padding: const EdgeInsets.all(8),
           color: Theme.of(context).colorScheme.primaryContainer,
@@ -209,117 +126,15 @@ class CommentTabState extends ConsumerState<CommentTab> {
           ),
         ),
         const Spacer(),
-        // ⭐ 底部: 三按钮一排 (跟摘要 tab 一致)
         BottomActionBar(
-          historyLabel: _summaries.isNotEmpty ? '历史 (${_summaries.length})' : '历史',
-          onHistory: _showSummaryHistory,
-          onContinue: null, // 还没总结, 不能续生成
-          mainActionLabel: '生成 AI 总结',
-          onMainAction: _generate,
-          isRunning: genState?.source == GenerationSource.comment && (genState?.isRunning ?? false),
-        ),
-      ],
-    );
-  }
-
-  void _showSummaryHistory() {
-    if (_summaries.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有历史总结')),
-      );
-      return;
-    }
-    setState(() => _selectedSummaryId = _summaries.first.id);
-  }
-
-  Future<void> _continueSummary(Summary selected) async {
-    await ref.read(generationProvider.notifier).continueCommentGeneration(
-      bvid: widget.bvid,
-      comments: _comments,
-      existingContent: selected.content,
-      page: _page,
-    );
-    if (mounted) _load();
-  }
-
-  Widget _buildStreamingView(GenerationState genState) {
-    final isRunning = genState.isRunning;
-    return Column(
-      children: [
-        const LinearProgressIndicator(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 4, 0),
-          child: Row(children: [
-            const Icon(Icons.auto_awesome, size: 16),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                isRunning
-                    ? 'AI 思考中… ${genState.content.length} 字'
-                    : '已完成 ${genState.content.length} 字',
-                style: Theme.of(context).textTheme.labelMedium,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SummaryToolbar(
-              content: genState.content,
-              sourceType: SourceType.comment,
-              onDownloadSettings: widget.onDownloadRequest,
-            ),
-          ]),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: SelectableText(
-              genState.content.isEmpty ? '(AI 思考中…)' : genState.content,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ),
-        BottomActionBar(
-          historyLabel: _summaries.isNotEmpty ? '历史 (${_summaries.length})' : '历史',
-          onHistory: _showSummaryHistory,
+          historyLabel: summaries.isNotEmpty ? '历史 (${summaries.length})' : '历史',
+          onHistory: onHistoryTap,
           onContinue: null,
-          mainActionLabel: genState.isCompleted ? '查看总结' : '停止生成',
-          mainActionIcon: genState.isCompleted ? Icons.check : Icons.stop,
-          onMainAction: () {
-            if (genState.isCompleted) {
-              ref.read(generationProvider.notifier).clear(widget.bvid);
-              if (mounted) _load();
-            } else {
-              ref.read(generationProvider.notifier).cancel(widget.bvid);
-            }
-          },
-          isRunning: !genState.isCompleted,
+          mainActionLabel: '生成 AI 总结',
+          onMainAction: onMainAction,
+          isRunning: isRunning(genState),
         ),
       ],
-    );
-  }
-
-  Widget _buildErrorView(GenerationState genState) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
-            const SizedBox(height: 16),
-            Text('生成失败', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(genState.error ?? '', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => ref.read(generationProvider.notifier).clear(widget.bvid),
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
-
-/// 统一空状态 — 跟 Summary tab 的 _noSubtitleState 风格一致
