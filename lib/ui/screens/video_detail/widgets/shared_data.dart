@@ -353,3 +353,25 @@ class BottomActionBar extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────
+// ⭐ 全局 SnackBar helper — 浮起不遮挡 BottomActionBar
+// ─────────────────────────────────────────────────────────────────
+
+/// 显示 SnackBar, 浮起 + 底部留出 80px 空间 (避免遮挡 BottomActionBar 三按钮)
+void showAppSnackBar(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+  Duration duration = const Duration(seconds: 3),
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+      duration: duration,
+      backgroundColor: isError ? Colors.red.shade700 : null,
+    ),
+  );
+}

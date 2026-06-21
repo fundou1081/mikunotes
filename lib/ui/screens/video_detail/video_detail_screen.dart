@@ -31,6 +31,7 @@ import 'package:mikunotes/ui/screens/video_detail/sheets/download_comments_sheet
 import 'package:mikunotes/ui/screens/video_detail/sheets/download_danmaku_sheet.dart';
 import 'package:mikunotes/ui/screens/video_detail/tabs/summary_tab.dart';
 import 'package:mikunotes/ui/screens/video_detail/tabs/chat_tab.dart';
+import 'package:mikunotes/ui/screens/video_detail/widgets/shared_data.dart' show showAppSnackBar;
 
 /// 默认总结 prompt
 
@@ -231,9 +232,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       await _loadAll();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刷新失败: $e')),
-        );
+        showAppSnackBar(context, '刷新失败: $e', isError: true);
         setState(() => _loadingSubtitle = false);
       }
     }
@@ -345,17 +344,13 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       if (!mounted) return;
       Navigator.pop(context); // close loading
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✓ 评论已保存: ${comments.length} 条 (page=$page)')),
-      );
+      showAppSnackBar(context, '✓ 评论已保存: ${comments.length} 条 (page=$page)');
       setState(() => _dataTabKey++); // 强制重建 CommentTab
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✗ 下载评论失败: $e')),
-      );
+      showAppSnackBar(context, '✗ 下载评论失败: $e', isError: true);
     }
   }
 
@@ -396,24 +391,18 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
       Navigator.pop(context);
       if (cid == 0) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('cid 为 0, 请检查视频是否存在')),
-        );
+        showAppSnackBar(context, 'cid 为 0, 请检查视频是否存在', isError: true);
         return;
       }
       final client = ref.read(danmakuClientProvider);
       final fetched = await client.fetchDanmaku(cid);
       if (!mounted) return;
       if (fetched.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✗ \${fetched.error}'), duration: const Duration(seconds: 4)),
-        );
+        showAppSnackBar(context, '✗ ${fetched.error}', isError: true, duration: const Duration(seconds: 4));
         return;
       }
       if (fetched.danmaku.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该视频暂无弹幕')),
-        );
+        showAppSnackBar(context, '该视频暂无弹幕');
         return;
       }
       // 过滤
@@ -450,17 +439,13 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         color: Value(d.color),
       )).toList());
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✓ 弹幕已保存: \${danmaku.length} 条')),
-      );
+      showAppSnackBar(context, '✓ 弹幕已保存: ${danmaku.length} 条');
       setState(() => _dataTabKey++); // 强制重建 DanmakuTab
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✗ 下载弹幕失败: \$e')),
-      );
+      showAppSnackBar(context, '✗ 下载弹幕失败: $e', isError: true);
     }
   }
 }

@@ -325,7 +325,7 @@ class ChatTabState extends ConsumerState<ChatTab> {
   String _fmtTimeMs(int ms) {
     final s = ms ~/ 1000;
     final m = s ~/ 60;
-    return '\${m.toString().padLeft(2, "0")}:\${(s % 60).toString().padLeft(2, "0")}';
+    return '${m.toString().padLeft(2, "0")}:${(s % 60).toString().padLeft(2, "0")}';
   }
 
   void _scrollToBottom() {
