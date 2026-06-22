@@ -1,7 +1,7 @@
 name: mikunotes
 description: MikuNotes - B站视频学习机，把视频变成你的私人知识库
 publish_to: 'none'
-version: 0.9.15+50
+version: 0.9.16+51
 
 environment:
   sdk: ^3.5.0

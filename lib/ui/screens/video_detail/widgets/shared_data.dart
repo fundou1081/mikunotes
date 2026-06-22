@@ -376,10 +376,10 @@ class BottomActionBar extends StatelessWidget {
               ),
             ],
             const SizedBox(width: 6),
-            // 重新生成 / 生成按钮
+            // 重新生成 / 生成 / 停止按钮 (永远 enabled — 停止是 escape hatch)
             Expanded(
               child: FilledButton(
-                onPressed: isRunning ? null : onMainAction,
+                onPressed: onMainAction,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   minimumSize: const Size(0, 40),
