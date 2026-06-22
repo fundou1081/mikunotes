@@ -97,7 +97,7 @@ class _SummaryTabState extends GenerationTabState<SummaryTab> {
   }
 
   @override
-  Widget _buildDataOrEmptyView(GenerationState? genState) {
+  Widget buildDataOrEmptyView(GenerationState? genState) {
     if (!hasSourceData) {
       return EmptyDataState(
         icon: Icons.subtitles_off,

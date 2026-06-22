@@ -87,7 +87,7 @@ class _DanmakuTabState extends GenerationTabState<DanmakuTab> {
   }
 
   @override
-  Widget _buildDataOrEmptyView(GenerationState? genState) {
+  Widget buildDataOrEmptyView(GenerationState? genState) {
     if (_danmaku.isEmpty) {
       return EmptyDataState(
         icon: Icons.lightbulb_outline,

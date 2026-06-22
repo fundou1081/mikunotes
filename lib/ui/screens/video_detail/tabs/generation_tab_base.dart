@@ -294,56 +294,29 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
 
   @override
   Widget build(BuildContext context) {
-    // ⭐ try-catch 防灰屏: 任何 build 异常都显示错误文本 (不显示 Flutter 灰盒)
-    try {
-      if (_loading) return const Center(child: CircularProgressIndicator());
-      if (_error != null) return Center(child: Text('错误: $_error'));
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return Center(child: Text('错误: $_error'));
 
-      final genState = ref.watch(generationProvider)[widget.bvid];
+    final genState = ref.watch(generationProvider)[widget.bvid];
 
-      // 选择主内容
-      final Widget content;
-      if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
-        content = _buildSelectedSummaryView(genState);
-      } else if (genState != null &&
-          genState.source == widget.source &&
-          (genState.isRunning || genState.isCompleted)) {
-        content = _buildStreamingView(genState);
-      } else if (genState != null &&
-          genState.source == widget.source &&
-          genState.error != null) {
-        content = _buildErrorView(genState);
-      } else {
-        content = _buildDataOrEmptyView(genState);
-      }
-
-      // ⭐ 其他 source 在生成时, 加顶部 banner (明确反馈跨 tab 状态)
-      return _wrapWithOtherSourceBanner(content, genState);
-    } catch (e, stack) {
-      // ⭐ 任何 build 异常都不会再导致灰屏
-      debugPrint('GenerationTab build 异常: $e\n$stack');
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
-              const SizedBox(height: 12),
-              Text('界面渲染错误: $e',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 12)),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () => setState(() {}),
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新加载'),
-              ),
-            ],
-          ),
-        ),
-      );
+    // 选择主内容
+    final Widget content;
+    if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
+      content = _buildSelectedSummaryView(genState);
+    } else if (genState != null &&
+        genState.source == widget.source &&
+        (genState.isRunning || genState.isCompleted)) {
+      content = _buildStreamingView(genState);
+    } else if (genState != null &&
+        genState.source == widget.source &&
+        genState.error != null) {
+      content = _buildErrorView(genState);
+    } else {
+      content = buildDataOrEmptyView(genState);
     }
+
+    // ⭐ 其他 source 在生成时, 加顶部 banner (明确反馈跨 tab 状态)
+    return _wrapWithOtherSourceBanner(content, genState);
   }
 
   /// 包装: 当其他 source 在生成时, 顶部加 banner
@@ -541,7 +514,8 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   }
 
   /// 子类必须实现: 决定空状态 vs 有数据无总结 的视图
-  Widget _buildDataOrEmptyView(GenerationState? genState);
+  /// ⭐ public — Dart private (_) 不能跨 library override, 必须 public
+  Widget buildDataOrEmptyView(GenerationState? genState);
 
   // ─── 内部辅助 ──────────────────────────────────────────
 

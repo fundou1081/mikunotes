@@ -87,7 +87,7 @@ class _CommentTabState extends GenerationTabState<CommentTab> {
   }
 
   @override
-  Widget _buildDataOrEmptyView(GenerationState? genState) {
+  Widget buildDataOrEmptyView(GenerationState? genState) {
     if (_comments.isEmpty) {
       return EmptyDataState(
         icon: Icons.comment_outlined,
