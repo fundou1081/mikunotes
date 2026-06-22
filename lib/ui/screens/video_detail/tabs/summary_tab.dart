@@ -42,13 +42,16 @@ class SummaryTab extends GenerationTab<SummaryTab> {
   @override
   List<PromptTemplate> availableTemplates(PromptTemplateSet t) => t.summaries;
   @override
-  bool get hasSourceData => subtitle != null;
+  // hasSourceData 在 state 实现
 
   @override
   ConsumerState<SummaryTab> createState() => _SummaryTabState();
 }
 
 class _SummaryTabState extends GenerationTabState<SummaryTab> {
+  @override
+  bool get hasSourceData => widget.subtitle != null;
+
   @override
   Future<void> doGenerate({
     required String? templateId,
@@ -95,7 +98,7 @@ class _SummaryTabState extends GenerationTabState<SummaryTab> {
 
   @override
   Widget _buildDataOrEmptyView(GenerationState? genState) {
-    if (!widget.hasSourceData) {
+    if (!hasSourceData) {
       return EmptyDataState(
         icon: Icons.subtitles_off,
         label: '请先下载字幕',

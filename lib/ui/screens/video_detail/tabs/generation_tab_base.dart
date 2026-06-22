@@ -87,9 +87,6 @@ abstract class GenerationTab<T extends GenerationTab<T>>
   /// 子类必须实现: 模板列表 (用于 _pickTemplate)
   List<PromptTemplate> availableTemplates(PromptTemplateSet t);
 
-  /// 子类必须实现: 是否有数据可生成 (用于启用"生成"按钮)
-  bool get hasSourceData;
-
   /// 子类实现: source 类型描述 (给日志/调试用)
   String get sourceName => source.name;
 }
@@ -113,7 +110,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   @override
   void initState() {
     super.initState();
-    _load();
+    _reload();
   }
 
   /// 默认实现: 加载 summaries + 选中最新
@@ -123,33 +120,46 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   void didUpdateWidget(covariant T oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.bvid != widget.bvid || oldWidget.selectedPage != widget.selectedPage) {
-      _load();
+      _reload();
     }
   }
 
-  /// 默认实现: 只加载 summaries (过滤 source-specific)
-  /// 子类 override 时应 super._load() 调用, 然后追加自己数据加载
-  Future<void> _load() async {
+  /// 统一 reload 入口 (子类的 loadSourceData 被调用)
+  Future<void> _reload() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final dbLocal = ref.read(databaseProvider);
-      final all = await dbLocal.getSummariesForVideo(widget.bvid);
-      // 过滤 page: 0=全部, N=仅 N
-      final pageFiltered = widget.selectedPage == 0
-          ? all
-          : all.where((s) => s.page == widget.selectedPage).toList();
-      _summaries = pageFiltered
-          .where((s) => _isMySummary(s))
-          .toList();
+      await loadSourceData();  // 子类实现: 加载评论/弹幕/字幕
+      await loadSummaries();   // 基类提供
       _autoSelectLatest();
     } catch (e) {
       _error = '$e';
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// 默认实现: 只加载 summaries (过滤 source-specific)
+  /// 子类可 override 提供额外的 source data 加载
+  @protected
+  Future<void> loadSourceData() async {
+    // 默认无操作, 子类 override (summary 用 widget.subtitle, 不需要 load)
+  }
+
+  /// 加载 summaries (基类使用, 不需要子类覆盖)
+  @protected
+  Future<void> loadSummaries() async {
+    final dbLocal = ref.read(databaseProvider);
+    final all = await dbLocal.getSummariesForVideo(widget.bvid);
+    // 过滤 page: 0=全部, N=仅 N
+    final pageFiltered = widget.selectedPage == 0
+        ? all
+        : all.where((s) => s.page == widget.selectedPage).toList();
+    _summaries = pageFiltered
+        .where((s) => _isMySummary(s))
+        .toList();
   }
 
   /// 子类必须实现: 判断 summary 是否属于本 source
@@ -182,7 +192,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
       if (mounted) showAppSnackBar(context, '请先配置 AI', isError: true);
       return;
     }
-    if (!widget.hasSourceData) {
+    if (!hasSourceData) {
       if (mounted) showAppSnackBar(context, '请先准备数据');
       return;
     }
@@ -203,7 +213,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
 
     // 调用子类实现的 doGenerate (在 state 里)
     await doGenerate(templateId: templateId, videoTitle: videoTitle);
-    if (mounted) await _load();  // 刷新 summaries
+    if (mounted) await _reload();  // 刷新 summaries
     widget.onSummaryChanged?.call();
   }
 
@@ -217,7 +227,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
     final videoTitle = await _fetchVideoTitle();
     if (!mounted) return;
     await doContinueSummary(selected, videoTitle: videoTitle);
-    if (mounted) await _load();
+    if (mounted) await _reload();
     widget.onSummaryChanged?.call();
   }
 
@@ -238,7 +248,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
         },
         onDelete: (s) async {
           await ref.read(videoRepositoryProvider).deleteSummary(s.id);
-          if (mounted) await _load();
+          if (mounted) await _reload();
           widget.onSummaryChanged?.call();
         },
       ),
@@ -264,7 +274,7 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   /// 用户删除 summary
   Future<void> onDeleteSummary(Summary s) async {
     await ref.read(videoRepositoryProvider).deleteSummary(s.id);
-    if (mounted) await _load();
+    if (mounted) await _reload();
     widget.onSummaryChanged?.call();
   }
 
@@ -289,27 +299,96 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
 
     final genState = ref.watch(generationProvider)[widget.bvid];
 
-    // 1. 选中历史总结
+    // 选择主内容
+    final Widget content;
     if (_summaries.isNotEmpty && _selectedSummaryId != null && genState == null) {
-      return _buildSelectedSummaryView(genState);
-    }
-
-    // 2. 正在生成 (或刚完成, 避免闪屏)
-    if (genState != null &&
+      content = _buildSelectedSummaryView(genState);
+    } else if (genState != null &&
         genState.source == widget.source &&
         (genState.isRunning || genState.isCompleted)) {
-      return _buildStreamingView(genState);
-    }
-
-    // 3. 生成失败
-    if (genState != null &&
+      content = _buildStreamingView(genState);
+    } else if (genState != null &&
         genState.source == widget.source &&
         genState.error != null) {
-      return _buildErrorView(genState);
+      content = _buildErrorView(genState);
+    } else {
+      content = _buildDataOrEmptyView(genState);
     }
 
-    // 4. 空状态 / 有数据无总结
-    return _buildDataOrEmptyView(genState);
+    // ⭐ 其他 source 在生成时, 加顶部 banner (明确反馈跨 tab 状态)
+    return _wrapWithOtherSourceBanner(content, genState);
+  }
+
+  /// 包装: 当其他 source 在生成时, 顶部加 banner
+  Widget _wrapWithOtherSourceBanner(Widget content, GenerationState? genState) {
+    final other = genState;
+    if (other == null) return content;
+    if (other.source == widget.source) return content;
+    if (!other.isRunning) return content;
+    final src = other.source;  // local for type promotion
+    final sourceLabel = _sourceLabel(src);
+    return Column(
+      children: [
+        _buildOtherSourceBanner(sourceLabel, other),
+        Expanded(child: content),
+      ],
+    );
+  }
+
+  Widget _buildOtherSourceBanner(String sourceLabel, GenerationState genState) {
+    return Material(
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 12, height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$sourceLabel 正在生成中... ${genState.content.length} 字',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  ref.read(generationProvider.notifier).cancel(widget.bvid);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.onTertiaryContainer,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                ),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _sourceLabel(GenerationSource? source) {
+    return switch (source) {
+      GenerationSource.summary => '摘要',
+      GenerationSource.comment => '评论',
+      GenerationSource.danmaku => '弹幕',
+      GenerationSource.chat => '对话',
+      null => '生成',
+    };
   }
 
   Widget _buildSelectedSummaryView(GenerationState? genState) {
@@ -455,6 +534,9 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   }
 
   // ─── 子类 override (可访问 ref/mounted/context) ──────────
+
+  /// 子类实现: 是否有数据可生成 (用于启用"生成"按钮)
+  bool get hasSourceData;
 
   /// 子类实现: 生成入口 (调 generationProvider.start*Generation)
   Future<void> doGenerate({
