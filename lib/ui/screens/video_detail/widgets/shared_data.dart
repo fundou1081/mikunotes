@@ -313,15 +313,37 @@ class BottomActionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           children: [
             // 历史按钮
             Expanded(
-              child: OutlinedButton.icon(
+              child: OutlinedButton(
                 onPressed: isRunning ? null : onHistory,
-                icon: const Icon(Icons.history, size: 18),
-                label: Text(historyLabel),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: const Size(0, 40),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.history, size: 16),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          historyLabel,  // 完整 label, 例如 '历史 (5)'
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             // 继续生成按钮 (可选)
@@ -330,10 +352,25 @@ class BottomActionBar extends StatelessWidget {
               Expanded(
                 child: Tooltip(
                   message: continueTooltip ?? '点击从已有内容继续写',
-                  child: FilledButton.tonalIcon(
+                  child: FilledButton.tonal(
                     onPressed: isRunning ? null : onContinue,
-                    icon: const Icon(Icons.play_circle_outline, size: 18),
-                    label: const Text('继续生成'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      minimumSize: const Size(0, 40),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_circle_outline, size: 16),
+                          SizedBox(width: 4),
+                          Text('继续', style: TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -341,10 +378,32 @@ class BottomActionBar extends StatelessWidget {
             const SizedBox(width: 6),
             // 重新生成 / 生成按钮
             Expanded(
-              child: FilledButton.icon(
+              child: FilledButton(
                 onPressed: isRunning ? null : onMainAction,
-                icon: Icon(mainActionIcon, size: 18),
-                label: Text(mainActionLabel),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: const Size(0, 40),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(mainActionIcon, size: 16),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          mainActionLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
