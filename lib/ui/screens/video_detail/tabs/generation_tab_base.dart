@@ -94,7 +94,10 @@ abstract class GenerationTab<T extends GenerationTab<T>>
 /// 基类 state — 公共逻辑都在这里
 abstract class GenerationTabState<T extends GenerationTab<T>>
     extends ConsumerState<T> {
-  bool _loading = true;
+  // ⭐ _loading 默认 false — 避免老视频打开瞬间闪一下灰屏 (spinner)
+  // DB 查询在 initState() 里 5-10ms 完成, 不需要专门的 loading 指示器
+  // 真正生成时的进度指示在 _buildStreamingView 里 (LinearProgressIndicator)
+  bool _loading = false;
   String? _error;
   List<Summary> _summaries = [];
   String? _selectedSummaryId;
@@ -125,19 +128,16 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
   }
 
   /// 统一 reload 入口 (子类的 loadSourceData 被调用)
+  /// ⭐ 不设 _loading=true — DB 查询快, 直接刷新数据即可
   Future<void> _reload() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
     try {
       await loadSourceData();  // 子类实现: 加载评论/弹幕/字幕
       await loadSummaries();   // 基类提供
       _autoSelectLatest();
+      // 一次性 setState 触发 UI 更新 (避免多次中间重建)
+      if (mounted) setState(() {});
     } catch (e) {
-      _error = '$e';
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _error = '$e');
     }
   }
 
