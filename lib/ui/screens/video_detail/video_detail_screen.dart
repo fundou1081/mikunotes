@@ -94,6 +94,75 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         appBar: AppBar(
           title: Text('视频 ${widget.bvid}', maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            // ⭐ 分P 选择器 (多P才显示) — 从 body 移到 AppBar, 给 tab 内容更多空间
+            if (_pageCount > 1)
+              PopupMenuButton<int>(
+                tooltip: '切换分P (当前 P$_selectedPage/$_pageCount)',
+                position: PopupMenuPosition.under,
+                offset: const Offset(0, 0),
+                itemBuilder: (_) => [
+                  for (var p = 1; p <= _pageCount; p++)
+                    PopupMenuItem<int>(
+                      value: p,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            child: p == _selectedPage
+                                ? const Icon(Icons.check, size: 16, color: Colors.green)
+                                : const SizedBox(width: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          Text('P$p'),
+                        ],
+                      ),
+                    ),
+                ],
+                onSelected: (page) {
+                  if (page == _selectedPage) return;
+                  setState(() => _selectedPage = page);
+                  _loadSubtitleForLang(_selectedLang ?? 'zh');
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'P$_selectedPage',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '/$_pageCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             IconButton(
               icon: const Icon(Icons.open_in_browser),
               tooltip: '在 B 站打开',
@@ -148,35 +217,7 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         ),
         body: Column(
           children: [
-            // 分P 选择器 (只有多P才显示) - 点击打开全分P 列表页
-            if (_pageCount > 1)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final result = await Navigator.push<int>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PageListPage(
-                          bvid: widget.bvid,
-                          selectedPage: _selectedPage,
-                        ),
-                      ),
-                    );
-                    if (result != null) {
-                      setState(() => _selectedPage = result);
-                      _loadSubtitleForLang(_selectedLang ?? 'zh');
-                    }
-                  },
-                  icon: const Icon(Icons.list, size: 16),
-                  label: Text(_pageChipLabel(), style: const TextStyle(fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ),
+            // ⭐ 分P 选择器移到 AppBar.actions (v0.9.15) - body 节省 ~44dp
             Expanded(
             child: TabBarView(children: [
           SummaryTab(bvid: widget.bvid, subtitle: _subtitle, onChanged: _loadAll, selectedPage: _selectedPage, pageCount: _pageCount),
@@ -236,26 +277,6 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen>
         setState(() => _loadingSubtitle = false);
       }
     }
-  }
-
-  Widget _pageChip(String label, int page) {
-    final selected = _selectedPage == page;
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      selected: selected,
-      onSelected: (_) {
-        setState(() => _selectedPage = page);
-        // 切换到指定页面, 重新加载字幕
-        _loadSubtitleForLang(_selectedLang ?? 'zh');
-      },
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-
-  String _pageChipLabel() {
-    if (_selectedPage == 0) return '整体 (所有分P) · $_pageCount 个 P';
-    return 'P$_selectedPage / $_pageCount';
   }
 
   Widget _countOption(BuildContext c, int count, String label) {
