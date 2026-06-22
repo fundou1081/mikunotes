@@ -164,9 +164,17 @@ abstract class GenerationTabState<T extends GenerationTab<T>>
 
   /// 子类必须实现: 判断 summary 是否属于本 source
   /// 默认实现: 用 promptUsed 前缀判断
+  /// ⭐ 兼容 legacy: 老 summary 的 promptUsed 是 systemPrompt (完整模板),
+  ///    长度很长且通常以 '你是' 开头, 不能用前缀匹配. 这里加个启发式:
+  ///    如果 promptUsed >= 200 字符 (明显是完整模板), 默认属于 summary tab.
+  ///    (只在 src='summary' 时启用, 避免误判 comment/danmaku)
   bool _isMySummary(Summary s) {
     final src = widget.source.name;  // 'summary' / 'comment' / 'danmaku'
-    return s.promptUsed == src || s.promptUsed.startsWith('${src}_');
+    // 新格式: '<source>' 或 '<source>_<name>'
+    if (s.promptUsed == src || s.promptUsed.startsWith('${src}_')) return true;
+    // Legacy (仅 summary): 老版本保存了完整 systemPrompt 作为 promptUsed
+    if (src == 'summary' && s.promptUsed.length >= 200) return true;
+    return false;
   }
 
   /// 自动选中最新总结 (如果没有选中)

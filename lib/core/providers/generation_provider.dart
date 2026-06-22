@@ -417,20 +417,22 @@ ${req.continueFrom}
         });
       } else {
         // summary/comment/danmaku: 保存到 Summary 表
-        // promptUsed 格式: 'comment' 或 'comment_<templateName>' (带模板名)
+        // promptUsed 格式: '<source>' 或 '<source>_<templateName>' (带模板名)
+        // ⭐ summary 之前用 systemPrompt (完整模板), _isMySummary 永远过滤不到
+        //    现在统一用 '<source>_<templateName>' 格式
         String promptUsed;
         if (req.templateId != null && req.templateId!.isNotEmpty) {
           final tplName = _ref.read(templatesProvider.notifier)
               .getById(_sourceToTemplateType(req.source), req.templateId!)?.name ?? '';
           promptUsed = switch (req.source) {
-            GenerationSource.summary => systemPrompt,
+            GenerationSource.summary => tplName.isNotEmpty ? 'summary_$tplName' : 'summary',
             GenerationSource.comment => tplName.isNotEmpty ? 'comment_$tplName' : 'comment',
             GenerationSource.danmaku => tplName.isNotEmpty ? 'danmaku_$tplName' : 'danmaku',
             GenerationSource.chat => '', // never reached
           };
         } else {
           promptUsed = switch (req.source) {
-            GenerationSource.summary => systemPrompt,
+            GenerationSource.summary => 'summary_custom',  // 自定义 prompt, 区分 'summary'
             GenerationSource.comment => 'comment',
             GenerationSource.danmaku => 'danmaku',
             GenerationSource.chat => '', // never reached
